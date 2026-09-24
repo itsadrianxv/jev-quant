@@ -1,0 +1,10 @@
+tmp/
+.env
+jev-docs/
+.agents/
+AGENTS.md
+docs/agents
+skills-lock.json
+docs/adr
+CONTEXT.md
+docs/plan
