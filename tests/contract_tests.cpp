@@ -1,6 +1,7 @@
-#include <cassert>
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -21,30 +22,41 @@
 
 namespace {
 
+[[noreturn]] void checkFailure(const char* condition, const char* file,
+                                int line) {
+  std::cerr << "check failed: " << condition << " (" << file << ":" << line
+            << ")\n";
+  std::abort();
+}
+
+#define CHECK(condition)                                                    \
+  ((condition) ? static_cast<void>(0)                                       \
+               : checkFailure(#condition, __FILE__, __LINE__))
+
 void testQueueContract() {
   Common::LFQueue<int> queue(2);
 
   auto* first = queue.tryGetNextToWriteTo();
-  assert(first != nullptr);
+  CHECK(first != nullptr);
   *first = 11;
   queue.updateWriteIndex();
 
   auto* second = queue.tryGetNextToWriteTo();
-  assert(second != nullptr);
+  CHECK(second != nullptr);
   *second = 22;
   queue.updateWriteIndex();
 
-  assert(queue.isFull());
-  assert(queue.tryGetNextToWriteTo() == nullptr);
+  CHECK(queue.isFull());
+  CHECK(queue.tryGetNextToWriteTo() == nullptr);
 
   const auto* read_first = queue.getNextToRead();
-  assert(read_first != nullptr && *read_first == 11);
+  CHECK(read_first != nullptr && *read_first == 11);
   queue.updateReadIndex();
 
   const auto* read_second = queue.getNextToRead();
-  assert(read_second != nullptr && *read_second == 22);
+  CHECK(read_second != nullptr && *read_second == 22);
   queue.updateReadIndex();
-  assert(queue.size() == 0);
+  CHECK(queue.size() == 0);
 }
 
 void testQueueSpscConcurrency() {
@@ -73,17 +85,17 @@ void testQueueSpscConcurrency() {
         std::this_thread::yield();
         continue;
       }
-      assert(*slot == expected);
+      CHECK(*slot == expected);
       ++expected;
       consumed.fetch_add(1, std::memory_order_relaxed);
       queue.updateReadIndex();
     }
-    assert(expected == message_count);
+    CHECK(expected == message_count);
   });
 
   producer.join();
   consumer.join();
-  assert(consumed.load(std::memory_order_relaxed) == message_count);
+  CHECK(consumed.load(std::memory_order_relaxed) == message_count);
 }
 
 void testMessageContract() {
@@ -92,23 +104,23 @@ void testMessageContract() {
   snapshot.depth_snapshot_.last_price_ = 1234;
   snapshot.depth_snapshot_.bids_[0] = {1233, 10};
   snapshot.depth_snapshot_.asks_[0] = {1235, 12};
-  assert(snapshot.toString().find("DEPTH_SNAPSHOT") != std::string::npos);
+  CHECK(snapshot.toString().find("DEPTH_SNAPSHOT") != std::string::npos);
 
   Exchange::ClientRequest request;
   request.type_ = Exchange::ClientRequestType::NEW;
   request.order_type_ = Common::OrderType::LIMIT;
   request.offset_ = Common::OrderOffset::OPEN;
-  assert(request.toString().find("LIMIT") != std::string::npos);
+  CHECK(request.toString().find("LIMIT") != std::string::npos);
 
   Exchange::ClientResponse response;
   response.type_ = Exchange::ClientResponseType::REJECTED;
-  assert(response.toString().find("REJECTED") != std::string::npos);
+  CHECK(response.toString().find("REJECTED") != std::string::npos);
 
   Trading::OMOrder order;
   order.order_type_ = Common::OrderType::LIMIT;
   order.offset_ = Common::OrderOffset::CLOSE_YESTERDAY;
   order.order_state_ = Trading::OMOrderState::PENDING_NEW;
-  assert(order.toString().find("CLOSE_YESTERDAY") != std::string::npos);
+  CHECK(order.toString().find("CLOSE_YESTERDAY") != std::string::npos);
 }
 
 void testMarketOrderBookContract() {
@@ -119,10 +131,10 @@ void testMarketOrderBookContract() {
   snapshot.depth_snapshot_.asks_[0] = {1235, 12};
   snapshot_book.onMarketUpdate(snapshot);
 
-  assert(snapshot_book.getBBO()->bid_price_ == 1233);
-  assert(snapshot_book.getBBO()->bid_qty_ == 10);
-  assert(snapshot_book.getBBO()->ask_price_ == 1235);
-  assert(snapshot_book.getBBO()->ask_qty_ == 12);
+  CHECK(snapshot_book.getBBO()->bid_price_ == 1233);
+  CHECK(snapshot_book.getBBO()->bid_qty_ == 10);
+  CHECK(snapshot_book.getBBO()->ask_price_ == 1235);
+  CHECK(snapshot_book.getBBO()->ask_qty_ == 12);
 
   Trading::MarketOrderBook incremental_book(0);
   Exchange::MarketUpdate add;
@@ -132,12 +144,12 @@ void testMarketOrderBookContract() {
   add.price_ = 1234;
   add.qty_ = 4;
   incremental_book.onMarketUpdate(add);
-  assert(incremental_book.getBBO()->bid_price_ == 1234);
-  assert(incremental_book.getBBO()->bid_qty_ == 4);
+  CHECK(incremental_book.getBBO()->bid_price_ == 1234);
+  CHECK(incremental_book.getBBO()->bid_qty_ == 4);
 
   add.type_ = Exchange::MarketUpdateType::CANCEL;
   incremental_book.onMarketUpdate(add);
-  assert(incremental_book.getBBO()->bid_price_ == Common::Price_INVALID);
+  CHECK(incremental_book.getBBO()->bid_price_ == Common::Price_INVALID);
 }
 
 void testJevDecisionContract() {
@@ -150,10 +162,10 @@ void testJevDecisionContract() {
   queue.updateWriteIndex();
 
   const auto* decision = queue.getNextToRead();
-  assert(decision != nullptr);
-  assert(decision->evaluation_id_ == 7);
-  assert(decision->bias_ == Trading::JevBias::LONG);
-  assert(decision->intent_ == Trading::JevIntent::OPEN);
+  CHECK(decision != nullptr);
+  CHECK(decision->evaluation_id_ == 7);
+  CHECK(decision->bias_ == Trading::JevBias::LONG);
+  CHECK(decision->intent_ == Trading::JevIntent::OPEN);
   queue.updateReadIndex();
 }
 
@@ -192,9 +204,9 @@ void testTradeEngineDispatchOrder() {
   decisions.updateWriteIndex();
   engine.registerEvaluation(0, 1);
 
-  assert(engine.processPending());
-  assert(order == "RMJ");
-  assert(engine.marketOrderBook(0).getBBO()->bid_price_ == 100);
+  CHECK(engine.processPending());
+  CHECK(order == "RMJ");
+  CHECK(engine.marketOrderBook(0).getBBO()->bid_price_ == 100);
 }
 
 void testBookModeProtection() {
@@ -217,7 +229,7 @@ void testBookModeProtection() {
   } catch (const std::logic_error&) {
     threw = true;
   }
-  assert(threw);
+  CHECK(threw);
 }
 
 void testSimulatedVenueTradingPath() {
@@ -232,31 +244,31 @@ void testSimulatedVenueTradingPath() {
   Tests::SimulatedVenue venue(&gateway);
 
   engine.orderManager().moveOrders(0, 100, Common::Price_INVALID, 2);
-  assert(requests.size() == 1);
-  assert(gateway.processPending());
-  assert(responses.size() == 1);
-  assert(engine.processPending());
+  CHECK(requests.size() == 1);
+  CHECK(gateway.processPending());
+  CHECK(responses.size() == 1);
+  CHECK(engine.processPending());
   auto& open_order = engine.orderManager().getOrder(0, Common::Side::BUY);
-  assert(open_order.order_state_ == Trading::OMOrderState::LIVE);
+  CHECK(open_order.order_state_ == Trading::OMOrderState::LIVE);
 
   venue.fill(open_order.order_id_, 100, 2);
-  assert(engine.processPending());
+  CHECK(engine.processPending());
   const auto& opened = engine.positionKeeper().getPositionInfo(0);
-  assert(opened.position_ == 2);
-  assert(opened.todayQty() == 2);
+  CHECK(opened.position_ == 2);
+  CHECK(opened.todayQty() == 2);
 
   engine.orderManager().moveCloseOrder(0, 101, Common::Side::SELL, 2);
-  assert(requests.size() == 1);
+  CHECK(requests.size() == 1);
   const auto& close_order = engine.orderManager().getOrder(0, Common::Side::SELL);
-  assert(close_order.offset_ == Common::OrderOffset::CLOSE_TODAY);
+  CHECK(close_order.offset_ == Common::OrderOffset::CLOSE_TODAY);
   gateway.processPending();
   engine.processPending();
   venue.fill(close_order.order_id_, 101, 2);
   engine.processPending();
   const auto& closed = engine.positionKeeper().getPositionInfo(0);
-  assert(closed.position_ == 0);
-  assert(closed.todayQty() == 0);
-  assert(closed.realized_pnl_ == 2.0);
+  CHECK(closed.position_ == 0);
+  CHECK(closed.todayQty() == 0);
+  CHECK(closed.realized_pnl_ == 2.0);
 }
 
 void testQueueFacingAdapters() {
@@ -266,8 +278,8 @@ void testQueueFacingAdapters() {
   Exchange::MarketUpdate update;
   update.type_ = Exchange::MarketUpdateType::DEPTH_SNAPSHOT;
   consumer.publishMarketUpdate(update);
-  assert(consumer.localReceiveSequence() == 1);
-  assert(market_updates.size() == 1);
+  CHECK(consumer.localReceiveSequence() == 1);
+  CHECK(market_updates.size() == 1);
   consumer.stop();
 
   Exchange::ClientRequestLFQueue requests(8);
@@ -282,9 +294,9 @@ void testQueueFacingAdapters() {
   request->client_id_ = 7;
   request->type_ = Exchange::ClientRequestType::CANCEL;
   requests.updateWriteIndex();
-  assert(gateway.processPending());
-  assert(seen_sequence == 1);
-  assert(gateway.nextOutgoingSequence() == 2);
+  CHECK(gateway.processPending());
+  CHECK(seen_sequence == 1);
+  CHECK(gateway.nextOutgoingSequence() == 2);
 }
 
 void testJevWorkerAndEvaluationExpiry() {
@@ -303,22 +315,22 @@ void testJevWorkerAndEvaluationExpiry() {
   state->evaluation_id_ = 3;
   state->ticker_id_ = 0;
   states.updateWriteIndex();
-  assert(worker.processPending());
+  CHECK(worker.processPending());
   engine.registerEvaluation(0, 3);
   std::size_t accepted = 0;
   engine.onJevDecision = [&](const Trading::JevDecision& decision) {
-    assert(decision.evaluation_id_ == 3);
+    CHECK(decision.evaluation_id_ == 3);
     ++accepted;
   };
-  assert(engine.processPending());
-  assert(accepted == 1);
+  CHECK(engine.processPending());
+  CHECK(accepted == 1);
 
   auto* stale = decisions.getNextToWriteTo();
   stale->evaluation_id_ = 2;
   stale->ticker_id_ = 0;
   decisions.updateWriteIndex();
-  assert(engine.processPending());
-  assert(accepted == 1);
+  CHECK(engine.processPending());
+  CHECK(accepted == 1);
 }
 
 void testJevHttpRequestContract() {
@@ -335,18 +347,18 @@ void testJevHttpRequestContract() {
   state.working_orders_[0].state_ = Trading::OMOrderState::LIVE;
 
   const auto body = client.buildRequestBody(state);
-  assert(body.find("\"model\":\"jev-latest\"") != std::string::npos);
-  assert(body.find("\"evaluation_id\": 9") != std::string::npos);
-  assert(body.find("\"working_orders\"") != std::string::npos);
-  assert(body.find("\"order_id\": 12") != std::string::npos);
-  assert(body.find("\"open\":\"open a position\"") != std::string::npos);
-  assert(body.find("\"hold\":\"take no action\"") != std::string::npos);
-  assert(body.find("\"close\":\"reduce the current position\"") ==
+  CHECK(body.find("\"model\":\"jev-latest\"") != std::string::npos);
+  CHECK(body.find("\"evaluation_id\": 9") != std::string::npos);
+  CHECK(body.find("\"working_orders\"") != std::string::npos);
+  CHECK(body.find("\"order_id\": 12") != std::string::npos);
+  CHECK(body.find("\"open\":\"open a position\"") != std::string::npos);
+  CHECK(body.find("\"hold\":\"take no action\"") != std::string::npos);
+  CHECK(body.find("\"close\":\"reduce the current position\"") ==
          std::string::npos);
 
   state.position_.net_position_ = 2;
   const auto occupied_body = client.buildRequestBody(state);
-  assert(occupied_body.find("\"close\":\"reduce the current position\"") !=
+  CHECK(occupied_body.find("\"close\":\"reduce the current position\"") !=
          std::string::npos);
 }
 
@@ -372,18 +384,18 @@ void testJevEvaluationSchedulingAndOrderMapping() {
 
   engine.attachJevEvaluationQueue(
       &evaluations, std::chrono::hours(1), 0);
-  assert(engine.processPending());
-  assert(evaluations.size() == 1);
+  CHECK(engine.processPending());
+  CHECK(evaluations.size() == 1);
 
-  assert(worker.processPending());
-  assert(engine.processPending());
-  assert(requests.size() == 1);
+  CHECK(worker.processPending());
+  CHECK(engine.processPending());
+  CHECK(requests.size() == 1);
   const auto* request = requests.getNextToRead();
-  assert(request != nullptr);
-  assert(request->client_id_ == 7);
-  assert(request->side_ == Common::Side::SELL);
-  assert(request->price_ == 99);
-  assert(request->offset_ == Common::OrderOffset::OPEN);
+  CHECK(request != nullptr);
+  CHECK(request->client_id_ == 7);
+  CHECK(request->side_ == Common::Side::SELL);
+  CHECK(request->price_ == 99);
+  CHECK(request->offset_ == Common::OrderOffset::OPEN);
 }
 
 void testYesterdayFirstPositionClose() {
@@ -394,7 +406,7 @@ void testYesterdayFirstPositionClose() {
   position.position_days_[static_cast<std::size_t>(Common::PositionDay::TODAY)] =
       {1, 100.0};
 
-  assert(position.closeOffsetFor(1) == Common::OrderOffset::CLOSE_YESTERDAY);
+  CHECK(position.closeOffsetFor(1) == Common::OrderOffset::CLOSE_YESTERDAY);
 
   Exchange::ClientResponse response;
   response.type_ = Exchange::ClientResponseType::FILLED;
@@ -406,10 +418,10 @@ void testYesterdayFirstPositionClose() {
   response.offset_ = Common::OrderOffset::CLOSE_YESTERDAY;
   position.onFill(response);
 
-  assert(position.position_ == 1);
-  assert(position.yesterdayQty() == 0);
-  assert(position.todayQty() == 1);
-  assert(position.realized_pnl_ == 4.0);
+  CHECK(position.position_ == 1);
+  CHECK(position.yesterdayQty() == 0);
+  CHECK(position.todayQty() == 1);
+  CHECK(position.realized_pnl_ == 4.0);
 }
 
 }  // namespace
