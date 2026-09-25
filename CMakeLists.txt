@@ -12,7 +12,7 @@ target_include_directories(jev_common INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/src
 add_library(jev_domain INTERFACE)
 target_link_libraries(jev_domain INTERFACE jev_common)
 
-add_library(jev_trading STATIC
+add_library(jev_trading_core STATIC
     src/trading/market_data/market_data_consumer.cpp
     src/trading/order_gw/order_gateway.cpp
     src/trading/strategy/jev_worker.cpp
@@ -21,9 +21,9 @@ add_library(jev_trading STATIC
     src/trading/strategy/order_manager.cpp
     src/trading/strategy/trade_engine.cpp
 )
-target_link_libraries(jev_trading PUBLIC jev_domain)
-target_include_directories(jev_trading PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_compile_options(jev_trading PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(jev_trading_core PUBLIC jev_domain)
+target_include_directories(jev_trading_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_compile_options(jev_trading_core PRIVATE -Wall -Wextra -Wpedantic)
 
 # Prefer a system-provided libcurl.  Source fallback is opt-in so normal builds
 # remain fast and deterministic.
@@ -40,7 +40,6 @@ endif()
 if (NOT nlohmann_json_FOUND AND NOT TARGET nlohmann_json::nlohmann_json)
   find_package(nlohmann_json CONFIG REQUIRED)
 endif()
-
 find_package(CURL QUIET)
 if (NOT CURL_FOUND AND JEV_FETCH_CURL)
   include(FetchContent)
@@ -88,20 +87,24 @@ endif()
 if (NOT TARGET CURL::libcurl)
   message(FATAL_ERROR "libcurl was found but did not provide CURL::libcurl")
 endif()
-target_link_libraries(jev_trading PUBLIC CURL::libcurl)
-target_link_libraries(jev_trading PUBLIC nlohmann_json::nlohmann_json)
+target_link_libraries(jev_trading_core PUBLIC CURL::libcurl)
+target_link_libraries(jev_trading_core PUBLIC nlohmann_json::nlohmann_json)
 
 enable_testing()
 
 add_executable(contract_tests tests/contract_tests.cpp)
-target_link_libraries(contract_tests PRIVATE jev_trading)
+target_link_libraries(contract_tests PRIVATE jev_trading_core)
 target_compile_options(contract_tests PRIVATE -Wall -Wextra -Wpedantic)
 
 add_test(NAME contract_tests COMMAND contract_tests)
 
+add_executable(jev_trading src/trading_main.cpp)
+target_link_libraries(jev_trading PRIVATE jev_trading_core)
+target_compile_options(jev_trading PRIVATE -Wall -Wextra -Wpedantic)
+
 if (JEV_ENABLE_LIVE_TESTS)
   add_executable(jev_live_smoke tests/jev_live_smoke.cpp)
-  target_link_libraries(jev_live_smoke PRIVATE jev_trading)
+  target_link_libraries(jev_live_smoke PRIVATE jev_trading_core)
   target_compile_options(jev_live_smoke PRIVATE -Wall -Wextra -Wpedantic)
   add_test(NAME jev_live_smoke COMMAND jev_live_smoke)
   set_tests_properties(jev_live_smoke PROPERTIES
