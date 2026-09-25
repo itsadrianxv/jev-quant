@@ -9,13 +9,7 @@
 #include <stdexcept>
 #include <utility>
 
-#ifndef JEV_QUANT_HAS_CURL
-#define JEV_QUANT_HAS_CURL 0
-#endif
-
-#if JEV_QUANT_HAS_CURL
 #include <curl/curl.h>
-#endif
 
 namespace Trading {
 namespace {
@@ -136,14 +130,12 @@ auto probability(const std::string& probabilities, const std::string& key)
   return extractNumber(probabilities.substr(key_position), key);
 }
 
-#if JEV_QUANT_HAS_CURL
 auto writeResponse(char* data, std::size_t size, std::size_t count,
                    void* user_data) -> std::size_t {
   auto* response = static_cast<std::string*>(user_data);
   response->append(data, size * count);
   return size * count;
 }
-#endif
 
 }  // namespace
 
@@ -251,11 +243,6 @@ auto JevHttpClient::parseDecision(const std::string& body,
 }
 
 auto JevHttpClient::evaluate(const JevEvaluationState& state) -> JevDecision {
-#if !JEV_QUANT_HAS_CURL
-  (void)state;
-  throw std::runtime_error(
-      "JevHttpClient requires libcurl development headers and library");
-#else
   if (config_.api_key_.empty()) {
     throw std::invalid_argument("JevHttpClient API key is empty");
   }
@@ -297,7 +284,6 @@ auto JevHttpClient::evaluate(const JevEvaluationState& state) -> JevDecision {
                              " body: " + response);
   }
   return parseDecision(response, state);
-#endif
 }
 
 }  // namespace Trading
