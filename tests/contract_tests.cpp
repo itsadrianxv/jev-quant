@@ -347,10 +347,12 @@ void testJevHttpRequestContract() {
   state.working_orders_[0].state_ = Trading::OMOrderState::LIVE;
 
   const auto body = client.buildRequestBody(state);
-  CHECK(body.find("\"model\":\"jev-latest\"") != std::string::npos);
-  CHECK(body.find("\"evaluation_id\": 9") != std::string::npos);
+  CHECK(body.find("\"model\":\"typesafe/jev-1.13\"") != std::string::npos);
+  CHECK(body.find("\"endpoint\"") == std::string::npos);
+  CHECK(body.find("\"instructions\":\"long or short?\"") != std::string::npos);
+  CHECK(body.find("\"evaluation_id\":9") != std::string::npos);
   CHECK(body.find("\"working_orders\"") != std::string::npos);
-  CHECK(body.find("\"order_id\": 12") != std::string::npos);
+  CHECK(body.find("\"order_id\":12") != std::string::npos);
   CHECK(body.find("\"open\":\"open a position\"") != std::string::npos);
   CHECK(body.find("\"hold\":\"take no action\"") != std::string::npos);
   CHECK(body.find("\"close\":\"reduce the current position\"") ==

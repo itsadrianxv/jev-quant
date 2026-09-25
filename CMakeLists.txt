@@ -27,6 +27,18 @@ target_compile_options(jev_trading PRIVATE -Wall -Wextra -Wpedantic)
 # Prefer a system-provided libcurl.  Source fallback is opt-in so normal builds
 # remain fast and deterministic.
 option(JEV_FETCH_CURL "Build curl from source when no system package exists" OFF)
+option(JEV_FETCH_NLOHMANN_JSON "Fetch nlohmann/json when no system package exists" OFF)
+find_package(nlohmann_json CONFIG QUIET)
+if (NOT nlohmann_json_FOUND AND JEV_FETCH_NLOHMANN_JSON)
+  include(FetchContent)
+  FetchContent_Declare(nlohmann_json
+      URL https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.tar.gz)
+  FetchContent_MakeAvailable(nlohmann_json)
+endif()
+if (NOT nlohmann_json_FOUND AND NOT TARGET nlohmann_json::nlohmann_json)
+  find_package(nlohmann_json CONFIG REQUIRED)
+endif()
+
 find_package(CURL QUIET)
 if (NOT CURL_FOUND AND JEV_FETCH_CURL)
   include(FetchContent)
@@ -75,6 +87,7 @@ if (NOT TARGET CURL::libcurl)
   message(FATAL_ERROR "libcurl was found but did not provide CURL::libcurl")
 endif()
 target_link_libraries(jev_trading PUBLIC CURL::libcurl)
+target_link_libraries(jev_trading PUBLIC nlohmann_json::nlohmann_json)
 
 enable_testing()
 
