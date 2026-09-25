@@ -5,7 +5,10 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <filesystem>
+#include <fstream>
 
+#include "common/async_logger.h"
 #include "common/lf_queue.h"
 #include "exchange/market_data/market_update.h"
 #include "exchange/order_server/client_request.h"
@@ -57,6 +60,67 @@ void testQueueContract() {
   CHECK(read_second != nullptr && *read_second == 22);
   queue.updateReadIndex();
   CHECK(queue.size() == 0);
+}
+
+void testAsyncLoggerContract() {
+  const auto output_dir = std::filesystem::temp_directory_path() /
+                          "jev_quant_async_logger_contract";
+  std::filesystem::remove_all(output_dir);
+
+  Common::AsyncLogger logger(output_dir, 8, std::chrono::milliseconds(1));
+  auto engine_log = logger.registerProducer("TradeEngine", "trade-engine.log");
+  auto gateway_log = logger.registerProducer("OrderGateway", "order-gateway.log");
+  logger.start();
+
+  engine_log.log(Common::LogLevel::INFO, "market update");
+  gateway_log.log(Common::LogLevel::ERROR, "order rejected");
+  engine_log.log(Common::LogLevel::WARN,
+                 std::string(Common::AsyncLogger::kMessageCapacity + 32, 'x'));
+  logger.stop();
+
+  std::ifstream engine_file(output_dir / "trade-engine.log");
+  std::ifstream gateway_file(output_dir / "order-gateway.log");
+  const std::string engine_text((std::istreambuf_iterator<char>(engine_file)),
+                                std::istreambuf_iterator<char>());
+  const std::string gateway_text((std::istreambuf_iterator<char>(gateway_file)),
+                                 std::istreambuf_iterator<char>());
+  CHECK(engine_text.find("[INFO] [TradeEngine] market update") !=
+        std::string::npos);
+  CHECK(engine_text.find("[WARN] [TradeEngine]") != std::string::npos);
+  CHECK(engine_text.size() < Common::AsyncLogger::kMessageCapacity + 256);
+  CHECK(gateway_text.find("[ERROR] [OrderGateway] order rejected") !=
+        std::string::npos);
+
+  std::filesystem::remove_all(output_dir);
+}
+
+void testAsyncLoggerQueueOverflowAndRegistration() {
+  const auto output_dir = std::filesystem::temp_directory_path() /
+                          "jev_quant_async_logger_overflow_contract";
+  std::filesystem::remove_all(output_dir);
+
+  Common::AsyncLogger logger(output_dir, 1, std::chrono::milliseconds(1));
+  auto producer = logger.registerProducer("Overflow", "overflow.log");
+  logger.start();
+
+  bool threw = false;
+  try {
+    (void)logger.registerProducer("Late", "late.log");
+  } catch (const std::logic_error&) {
+    threw = true;
+  }
+  CHECK(threw);
+
+  producer.log(Common::LogLevel::DEBUG, "first");
+  producer.log(Common::LogLevel::DEBUG, "dropped");
+  logger.stop();
+
+  std::ifstream file(output_dir / "overflow.log");
+  const std::string text((std::istreambuf_iterator<char>(file)),
+                         std::istreambuf_iterator<char>());
+  CHECK(text.find(" first\n") != std::string::npos);
+  CHECK(text.find("dropped") == std::string::npos);
+  std::filesystem::remove_all(output_dir);
 }
 
 void testQueueSpscConcurrency() {
@@ -452,6 +516,8 @@ void testYesterdayFirstPositionClose() {
 
 int main() {
   testQueueContract();
+  testAsyncLoggerContract();
+  testAsyncLoggerQueueOverflowAndRegistration();
   testQueueSpscConcurrency();
   testMessageContract();
   testMarketOrderBookContract();
