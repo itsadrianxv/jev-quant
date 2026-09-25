@@ -51,6 +51,7 @@ int main(int argc, char** argv) {
       throw std::runtime_error("Invalid runtime instrument or queue capacity");
     }
 
+    // initializing the lock-free queues
     Exchange::ClientRequestLFQueue client_requests(queue_capacity);
     Exchange::ClientResponseLFQueue client_responses(queue_capacity);
     Exchange::MarketUpdateLFQueue market_updates(queue_capacity);
