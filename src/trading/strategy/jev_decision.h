@@ -79,5 +79,6 @@ struct JevDecision {
 };
 
 using JevDecisionLFQueue = Common::LFQueue<JevDecision>;
+using JevEvaluationStateLFQueue = Common::LFQueue<JevEvaluationState>;
 
 }  // namespace Trading
