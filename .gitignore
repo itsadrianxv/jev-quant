@@ -1,5 +1,4 @@
 tmp/
-build/
 .env
 jev-docs/
 .agents/
@@ -9,3 +8,4 @@ skills-lock.json
 docs/adr
 CONTEXT.md
 docs/plan
+build*
