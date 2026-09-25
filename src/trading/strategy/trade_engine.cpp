@@ -133,6 +133,10 @@ auto TradeEngine::handleClientResponse(
 auto TradeEngine::handleMarketUpdate(const Exchange::MarketUpdate& update,
                                      const MarketOrderBook& book) -> void {
   position_keeper_.updateBBO(update.ticker_id_, book.getBBO());
+  if (update.type_ == Exchange::MarketUpdateType::DEPTH_SNAPSHOT &&
+      update.ticker_id_ < instrument_ready_.size()) {
+    instrument_ready_.at(update.ticker_id_) = true;
+  }
   onMarketUpdate(update, book);
 }
 
@@ -194,6 +198,7 @@ auto TradeEngine::attachJevEvaluationQueue(
 
 auto TradeEngine::scheduleJevEvaluation() -> bool {
   if (outgoing_jev_evaluations_ == nullptr ||
+      !instrument_ready_.at(jev_ticker_id_) ||
       std::chrono::steady_clock::now() < next_jev_evaluation_at_) {
     return false;
   }

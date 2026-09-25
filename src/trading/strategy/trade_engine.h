@@ -125,6 +125,7 @@ class TradeEngine final {
   OrderManager order_manager_;
   AccountState account_state_{};
   std::array<std::uint64_t, Common::ME_MAX_TICKERS> latest_evaluation_ids_{};
+  std::array<bool, Common::ME_MAX_TICKERS> instrument_ready_{};
   JevEvaluationStateLFQueue* outgoing_jev_evaluations_ = nullptr;
   std::chrono::milliseconds jev_evaluation_interval_{2000};
   std::chrono::steady_clock::time_point next_jev_evaluation_at_{};
