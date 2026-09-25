@@ -9,3 +9,4 @@ docs/adr
 CONTEXT.md
 docs/plan
 build*
+.scratch/
