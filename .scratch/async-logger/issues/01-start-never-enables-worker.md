@@ -40,4 +40,4 @@ consecutive runs of contract_tests.
 ## Comments
 
 - 2026-09-25: Diagnosed from CI logs; fixed with a one-line change and the
-  ticket committed together.
+    ticket committed together.

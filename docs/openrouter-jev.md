@@ -61,11 +61,11 @@ The checks also define the listing type every stage shares. Every field is one o
 ```ts
 // listing.ts
 export const CATEGORIES = {
-  electronics: 'Phones, laptops, cameras, audio gear, game consoles, and their accessories.',
-  furniture: 'Tables, chairs, sofas, beds, shelving, and other household furniture.',
-  clothing: 'Apparel, shoes, bags, and fashion accessories.',
-  sporting_goods: 'Bikes, fitness equipment, camping gear, and equipment for playing sports.',
-  toys_and_baby: 'Toys, games, strollers, car seats, cribs, and other children’s items.',
+    electronics: 'Phones, laptops, cameras, audio gear, game consoles, and their accessories.',
+    furniture: 'Tables, chairs, sofas, beds, shelving, and other household furniture.',
+    clothing: 'Apparel, shoes, bags, and fashion accessories.',
+    sporting_goods: 'Bikes, fitness equipment, camping gear, and equipment for playing sports.',
+    toys_and_baby: 'Toys, games, strollers, car seats, cribs, and other children’s items.',
 } as const;
 
 export type Category = keyof typeof CATEGORIES;
@@ -74,13 +74,13 @@ export const CONDITIONS = ['for_parts', 'fair', 'good', 'like_new', 'new'] as co
 export type Condition = (typeof CONDITIONS)[number];
 
 export type Listing = {
-  id: string;
-  title: string;
-  description: string;
-  category: Category;
-  condition: Condition;
-  priceUsd: number;
-  photoCount: number;
+    id: string;
+    title: string;
+    description: string;
+    category: Category;
+    condition: Condition;
+    priceUsd: number;
+    photoCount: number;
 };
 ```
 
@@ -94,30 +94,30 @@ import type { Category, Listing } from './listing';
 
 // Typical sale price per category, in USD. In production this comes from your own sales data.
 const TYPICAL_PRICE_USD: Record<Category, number> = {
-  electronics: 180,
-  furniture: 120,
-  clothing: 35,
-  sporting_goods: 90,
-  toys_and_baby: 40,
+    electronics: 180,
+    furniture: 120,
+    clothing: 35,
+    sporting_goods: 90,
+    toys_and_baby: 40,
 };
 
 export type PriceSignal = 'far_below_typical' | 'typical' | 'far_above_typical';
 
 export function priceSignal(listing: Listing): PriceSignal {
-  const ratio = listing.priceUsd / TYPICAL_PRICE_USD[listing.category];
-  if (ratio < 0.2) return 'far_below_typical';
-  if (ratio > 10) return 'far_above_typical';
-  return 'typical';
+    const ratio = listing.priceUsd / TYPICAL_PRICE_USD[listing.category];
+    if (ratio < 0.2) return 'far_below_typical';
+    if (ratio > 10) return 'far_above_typical';
+    return 'typical';
 }
 
 // Hard rules. Anything here is a fact your code already knows, so no model is involved.
 export function hardRuleFailures(listing: Listing): string[] {
-  const failures: string[] = [];
-  if (listing.photoCount < 1) failures.push('at least one photo is required');
-  if (listing.priceUsd < 0.01 || listing.priceUsd > 50_000) failures.push('price must be between $0.01 and $50,000');
-  if (listing.title.trim().length < 8) failures.push('title must be at least 8 characters');
-  if (listing.description.trim().length < 30) failures.push('description must be at least 30 characters');
-  return failures;
+    const failures: string[] = [];
+    if (listing.photoCount < 1) failures.push('at least one photo is required');
+    if (listing.priceUsd < 0.01 || listing.priceUsd > 50_000) failures.push('price must be between $0.01 and $50,000');
+    if (listing.title.trim().length < 8) failures.push('title must be at least 8 characters');
+    if (listing.description.trim().length < 30) failures.push('description must be at least 30 characters');
+    return failures;
 }
 ```
 
@@ -135,15 +135,15 @@ Here is the state for one marketplace listing.
 
 ```json
 {
-  "listing": {
-    "title": "Louis Vuitton Neverfull MM tote",
-    "description": "Mirror quality 1:1, same factory as the boutique version. Nobody can tell the difference. Text me on WhatsApp for more photos and a better price.",
-    "category": "clothing",
-    "declared_condition": "new",
-    "price_usd": 120
-  },
-  "category_definition": "Apparel, shoes, bags, and fashion accessories.",
-  "price_signal": "typical"
+    "listing": {
+        "title": "Louis Vuitton Neverfull MM tote",
+        "description": "Mirror quality 1:1, same factory as the boutique version. Nobody can tell the difference. Text me on WhatsApp for more photos and a better price.",
+        "category": "clothing",
+        "declared_condition": "new",
+        "price_usd": 120
+    },
+    "category_definition": "Apparel, shoes, bags, and fashion accessories.",
+    "price_signal": "typical"
 }
 ```
 
@@ -181,32 +181,32 @@ import { CATEGORIES, CONDITIONS, type Listing } from './listing';
 import { priceSignal } from './rules';
 
 const openrouter = new OpenRouter({
-  apiKey: process.env.OPENROUTER_API_KEY, // server-side only
+    apiKey: process.env.OPENROUTER_API_KEY, // server-side only
 });
 
 export const PROHIBITED = {
-  none: 'An ordinary secondhand or new item that a general marketplace allows.',
-  weapon_or_weapon_part:
-    'A firearm, firearm part or accessory, ammunition, stun gun, or a knife or tool marketed for fighting or self-defense.',
-  medication_or_medical_claim:
-    'Prescription medication, a controlled substance, or any product sold with a claim that it treats, cures, or prevents a medical condition.',
-  counterfeit_or_replica:
-    'An item that carries a brand name, logo, or signature design without being made by that brand, including items called replica, AAA, 1:1, mirror, inspired by, or same factory. A brand-name item whose `price_signal` is far_below_typical with no reason given for the low price also fits here.',
-  recalled_or_unsafe_child_item:
-    'A car seat, crib, bassinet, or child helmet that has been in a crash, is missing parts or straps, is described as recalled, or has no visible manufacture date or label.',
-  account_or_digital_access:
-    'Login credentials, subscription or streaming accounts, gift card codes, license keys, or in-game currency.',
+    none: 'An ordinary secondhand or new item that a general marketplace allows.',
+    weapon_or_weapon_part:
+        'A firearm, firearm part or accessory, ammunition, stun gun, or a knife or tool marketed for fighting or self-defense.',
+    medication_or_medical_claim:
+        'Prescription medication, a controlled substance, or any product sold with a claim that it treats, cures, or prevents a medical condition.',
+    counterfeit_or_replica:
+        'An item that carries a brand name, logo, or signature design without being made by that brand, including items called replica, AAA, 1:1, mirror, inspired by, or same factory. A brand-name item whose `price_signal` is far_below_typical with no reason given for the low price also fits here.',
+    recalled_or_unsafe_child_item:
+        'A car seat, crib, bassinet, or child helmet that has been in a crash, is missing parts or straps, is described as recalled, or has no visible manufacture date or label.',
+    account_or_digital_access:
+        'Login credentials, subscription or streaming accounts, gift card codes, license keys, or in-game currency.',
 } as const;
 
 export type ProhibitedKind = keyof typeof PROHIBITED;
 
 // Score levels are ordered from worst to best, and each one describes a concrete situation.
 export const CONDITION_LEVELS = [
-  'Does not work or is missing parts. Sold for parts or repair.',
-  'Works, but has clear wear, damage, stains, or missing accessories that the buyer would notice immediately.',
-  'Works fully. Light wear from normal use. Nothing broken or missing.',
-  'Works fully and looks unused or nearly unused. Original packaging or accessories may be included.',
-  'Brand new. Sealed, tagged, or never used.',
+    'Does not work or is missing parts. Sold for parts or repair.',
+    'Works, but has clear wear, damage, stains, or missing accessories that the buyer would notice immediately.',
+    'Works fully. Light wear from normal use. Nothing broken or missing.',
+    'Works fully and looks unused or nearly unused. Original packaging or accessories may be included.',
+    'Brand new. Sealed, tagged, or never used.',
 ] as const;
 ```
 
@@ -221,116 +221,116 @@ This function sends the marketplace state and all five questions, then parses th
 ```ts
 // judge.ts, continued
 export type Judgment = {
-  prohibited: { kind: ProhibitedKind; confidence: number; probabilities: Record<string, number> };
-  matchesCategory: number;
-  descriptionContradictsTitle: number;
-  offsiteTransaction: number;
-  describedCondition: { score: number; confidence: number };
-  costUsd: number;
+    prohibited: { kind: ProhibitedKind; confidence: number; probabilities: Record<string, number> };
+    matchesCategory: number;
+    descriptionContradictsTitle: number;
+    offsiteTransaction: number;
+    describedCondition: { score: number; confidence: number };
+    costUsd: number;
 };
 
 function isProhibitedKind(value: string): value is ProhibitedKind {
-  return Object.hasOwn(PROHIBITED, value);
+    return Object.hasOwn(PROHIBITED, value);
 }
 
 export async function judgeListing(listing: Listing): Promise<Judgment> {
-  const result = await openrouter.alpha.decisions.create({
-    decisionsRequest: {
-      model: 'typesafe/jev-1.13',
-      state: {
-        listing: {
-          title: listing.title,
-          description: listing.description,
-          category: listing.category,
-          declared_condition: listing.condition,
-          price_usd: listing.priceUsd,
+    const result = await openrouter.alpha.decisions.create({
+        decisionsRequest: {
+            model: 'typesafe/jev-1.13',
+            state: {
+                listing: {
+                    title: listing.title,
+                    description: listing.description,
+                    category: listing.category,
+                    declared_condition: listing.condition,
+                    price_usd: listing.priceUsd,
+                },
+                category_definition: CATEGORIES[listing.category],
+                price_signal: priceSignal(listing),
+            },
+            questions: {
+                prohibited: {
+                    type: 'choice',
+                    instructions: 'Which prohibited category, if any, does the item in `listing.title` and `listing.description` fall into? `price_signal` compares `listing.price_usd` with the typical price for its category.',
+                    criteria: PROHIBITED,
+                },
+                matches_category: {
+                    type: 'noul',
+                    instructions: 'Does the item described in `listing.title` and `listing.description` belong in the category defined by `category_definition`?',
+                    criteria: {
+                        true: 'The item is the kind of thing the category definition describes.',
+                        false: 'The item belongs in a different category, or the listing does not describe a physical item at all.',
+                    },
+                },
+                description_contradicts_title: {
+                    type: 'noul',
+                    instructions: 'Does `listing.description` contradict `listing.title` about the brand, model, size, quantity, or whether the item works?',
+                    criteria: {
+                        true: 'The two disagree on at least one of those facts, such as a title that says one brand and a description that names another.',
+                        false: 'The description adds detail or repeats the title without contradicting it.',
+                    },
+                },
+                offsite_transaction: {
+                    type: 'noul',
+                    instructions: 'Does the listing ask the buyer to contact the seller, pay, or complete the sale outside the marketplace?',
+                    criteria: {
+                        true: 'The text gives a phone number, email, messaging app handle, external link, or asks for wire transfer, cash app, crypto, or gift card payment.',
+                        false: 'The listing stays within the marketplace, including local pickup arranged through the marketplace.',
+                    },
+                },
+                described_condition: {
+                    type: 'score',
+                    instructions: 'Based only on `listing.description`, which level best describes the physical condition of the item?',
+                    criteria: [...CONDITION_LEVELS],
+                },
+            },
         },
-        category_definition: CATEGORIES[listing.category],
-        price_signal: priceSignal(listing),
-      },
-      questions: {
+    });
+
+    const { prohibited, matches_category, description_contradicts_title, offsite_transaction, described_condition } =
+        result.answers;
+
+    if (
+        prohibited?.type !== 'choice' ||
+        matches_category?.type !== 'noul' ||
+        description_contradicts_title?.type !== 'noul' ||
+        offsite_transaction?.type !== 'noul' ||
+        described_condition?.type !== 'score'
+    ) {
+        throw new Error('Unexpected answer types in Decisions response');
+    }
+    if (!isProhibitedKind(prohibited.choice)) {
+        throw new Error(`Unknown prohibited kind ${prohibited.choice}`);
+    }
+    if (prohibited.confidence === undefined || prohibited.probabilities === undefined) {
+        throw new Error('Choice answer did not include confidence and probabilities');
+    }
+    if (described_condition.confidence === undefined) {
+        throw new Error('Score answer did not include confidence');
+    }
+    if (result.usage.cost === undefined) {
+        throw new Error('Response did not include usage.cost');
+    }
+
+    return {
         prohibited: {
-          type: 'choice',
-          instructions: 'Which prohibited category, if any, does the item in `listing.title` and `listing.description` fall into? `price_signal` compares `listing.price_usd` with the typical price for its category.',
-          criteria: PROHIBITED,
+            kind: prohibited.choice,
+            confidence: prohibited.confidence,
+            probabilities: prohibited.probabilities,
         },
-        matches_category: {
-          type: 'noul',
-          instructions: 'Does the item described in `listing.title` and `listing.description` belong in the category defined by `category_definition`?',
-          criteria: {
-            true: 'The item is the kind of thing the category definition describes.',
-            false: 'The item belongs in a different category, or the listing does not describe a physical item at all.',
-          },
+        matchesCategory: matches_category.noul,
+        descriptionContradictsTitle: description_contradicts_title.noul,
+        offsiteTransaction: offsite_transaction.noul,
+        describedCondition: {
+            score: described_condition.score,
+            confidence: described_condition.confidence,
         },
-        description_contradicts_title: {
-          type: 'noul',
-          instructions: 'Does `listing.description` contradict `listing.title` about the brand, model, size, quantity, or whether the item works?',
-          criteria: {
-            true: 'The two disagree on at least one of those facts, such as a title that says one brand and a description that names another.',
-            false: 'The description adds detail or repeats the title without contradicting it.',
-          },
-        },
-        offsite_transaction: {
-          type: 'noul',
-          instructions: 'Does the listing ask the buyer to contact the seller, pay, or complete the sale outside the marketplace?',
-          criteria: {
-            true: 'The text gives a phone number, email, messaging app handle, external link, or asks for wire transfer, cash app, crypto, or gift card payment.',
-            false: 'The listing stays within the marketplace, including local pickup arranged through the marketplace.',
-          },
-        },
-        described_condition: {
-          type: 'score',
-          instructions: 'Based only on `listing.description`, which level best describes the physical condition of the item?',
-          criteria: [...CONDITION_LEVELS],
-        },
-      },
-    },
-  });
-
-  const { prohibited, matches_category, description_contradicts_title, offsite_transaction, described_condition } =
-    result.answers;
-
-  if (
-    prohibited?.type !== 'choice' ||
-    matches_category?.type !== 'noul' ||
-    description_contradicts_title?.type !== 'noul' ||
-    offsite_transaction?.type !== 'noul' ||
-    described_condition?.type !== 'score'
-  ) {
-    throw new Error('Unexpected answer types in Decisions response');
-  }
-  if (!isProhibitedKind(prohibited.choice)) {
-    throw new Error(`Unknown prohibited kind ${prohibited.choice}`);
-  }
-  if (prohibited.confidence === undefined || prohibited.probabilities === undefined) {
-    throw new Error('Choice answer did not include confidence and probabilities');
-  }
-  if (described_condition.confidence === undefined) {
-    throw new Error('Score answer did not include confidence');
-  }
-  if (result.usage.cost === undefined) {
-    throw new Error('Response did not include usage.cost');
-  }
-
-  return {
-    prohibited: {
-      kind: prohibited.choice,
-      confidence: prohibited.confidence,
-      probabilities: prohibited.probabilities,
-    },
-    matchesCategory: matches_category.noul,
-    descriptionContradictsTitle: description_contradicts_title.noul,
-    offsiteTransaction: offsite_transaction.noul,
-    describedCondition: {
-      score: described_condition.score,
-      confidence: described_condition.confidence,
-    },
-    costUsd: result.usage.cost,
-  };
+        costUsd: result.usage.cost,
+    };
 }
 
 export function declaredConditionIndex(listing: Listing): number {
-  return CONDITIONS.indexOf(listing.condition);
+    return CONDITIONS.indexOf(listing.condition);
 }
 ```
 
@@ -346,59 +346,59 @@ In this example, we’ll see an SDK call (which in essence is a wrapped `POST ht
 
 ```bash
 curl https://openrouter.ai/api/alpha/decisions \
-  -H "Authorization: Bearer $OPENROUTER_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "typesafe/jev-1.13",
-    "state": {
-      "listing": {
-        "title": "Peloton Bike, original model",
-        "description": "Works great, we just never use it. Screen has a dead pixel line down the left side and the right pedal squeaks. Selling as is, no shoes or mat.",
-        "declared_condition": "like_new"
-      }
-    },
-    "questions": {
-      "offsite_transaction": {
-        "type": "noul",
-        "instructions": "Does the listing ask the buyer to contact the seller, pay, or complete the sale outside the marketplace?"
-      },
-      "described_condition": {
-        "type": "score",
-        "instructions": "Based only on `listing.description`, which level best describes the physical condition of the item?",
-        "criteria": [
-          "Does not work or is missing parts. Sold for parts or repair.",
-          "Works, but has clear wear, damage, stains, or missing accessories that the buyer would notice immediately.",
-          "Works fully. Light wear from normal use. Nothing broken or missing.",
-          "Works fully and looks unused or nearly unused. Original packaging or accessories may be included.",
-          "Brand new. Sealed, tagged, or never used."
-        ]
-      }
-    }
-  }'
+    -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d '{
+        "model": "typesafe/jev-1.13",
+        "state": {
+            "listing": {
+                "title": "Peloton Bike, original model",
+                "description": "Works great, we just never use it. Screen has a dead pixel line down the left side and the right pedal squeaks. Selling as is, no shoes or mat.",
+                "declared_condition": "like_new"
+            }
+        },
+        "questions": {
+            "offsite_transaction": {
+                "type": "noul",
+                "instructions": "Does the listing ask the buyer to contact the seller, pay, or complete the sale outside the marketplace?"
+            },
+            "described_condition": {
+                "type": "score",
+                "instructions": "Based only on `listing.description`, which level best describes the physical condition of the item?",
+                "criteria": [
+                    "Does not work or is missing parts. Sold for parts or repair.",
+                    "Works, but has clear wear, damage, stains, or missing accessories that the buyer would notice immediately.",
+                    "Works fully. Light wear from normal use. Nothing broken or missing.",
+                    "Works fully and looks unused or nearly unused. Original packaging or accessories may be included.",
+                    "Brand new. Sealed, tagged, or never used."
+                ]
+            }
+        }
+    }'
 ```
 
 ```json
 {
-  "model": "typesafe/jev-1.13-20260917",
-  "answers": {
-    "offsite_transaction": { "type": "noul", "noul": 0.05 },
-    "described_condition": {
-      "type": "score",
-      "score": 1,
-      "legend": {
-        "0": "Does not work or is missing parts. Sold for parts or repair.",
-        "1": "Works, but has clear wear, damage, stains, or missing accessories that the buyer would notice immediately.",
-        "2": "Works fully. Light wear from normal use. Nothing broken or missing.",
-        "3": "Works fully and looks unused or nearly unused. Original packaging or accessories may be included.",
-        "4": "Brand new. Sealed, tagged, or never used."
-      },
-      "probabilities": { "0": 0, "1": 1, "2": 0, "3": 0, "4": 0 },
-      "confidence": 1
-    }
-  },
-  "usage": { "input_tokens": 492, "output_tokens": 38, "cost": 0.000020664 },
-  "id": "gen-dec-1790099229-ahAseXX5gNJzoLiCZICn",
-  "provider": "TypeSafe"
+    "model": "typesafe/jev-1.13-20260917",
+    "answers": {
+        "offsite_transaction": { "type": "noul", "noul": 0.05 },
+        "described_condition": {
+            "type": "score",
+            "score": 1,
+            "legend": {
+                "0": "Does not work or is missing parts. Sold for parts or repair.",
+                "1": "Works, but has clear wear, damage, stains, or missing accessories that the buyer would notice immediately.",
+                "2": "Works fully. Light wear from normal use. Nothing broken or missing.",
+                "3": "Works fully and looks unused or nearly unused. Original packaging or accessories may be included.",
+                "4": "Brand new. Sealed, tagged, or never used."
+            },
+            "probabilities": { "0": 0, "1": 1, "2": 0, "3": 0, "4": 0 },
+            "confidence": 1
+        }
+    },
+    "usage": { "input_tokens": 492, "output_tokens": 38, "cost": 0.000020664 },
+    "id": "gen-dec-1790099229-ahAseXX5gNJzoLiCZICn",
+    "provider": "TypeSafe"
 }
 ```
 
@@ -419,75 +419,75 @@ import { hardRuleFailures } from './rules';
 export type Action = 'publish' | 'hold' | 'reject';
 
 export type Decision = {
-  action: Action;
-  reasons: string[];
-  judgment?: Judgment;
+    action: Action;
+    reasons: string[];
+    judgment?: Judgment;
 };
 
 export const THRESHOLDS = {
-  rejectProhibitedConfidence: 0.8,
-  holdNoneConfidence: 0.5,
-  holdConditionConfidence: 0.3,
-  rejectOffsite: 0.8,
-  holdOffsite: 0.4,
-  holdContradiction: 0.6,
-  holdCategoryMismatch: 0.3,
-  holdConditionGap: 1.5,
+    rejectProhibitedConfidence: 0.8,
+    holdNoneConfidence: 0.5,
+    holdConditionConfidence: 0.3,
+    rejectOffsite: 0.8,
+    holdOffsite: 0.4,
+    holdContradiction: 0.6,
+    holdCategoryMismatch: 0.3,
+    holdConditionGap: 1.5,
 };
 
 // Pure policy: turns saved answers into an action, so thresholds can be replayed without new inference.
 export function decide(listing: Listing, judgment: Judgment, thresholds = THRESHOLDS): Decision {
-  const reasons: string[] = [];
-  const { prohibited, offsiteTransaction, descriptionContradictsTitle, matchesCategory, describedCondition } = judgment;
+    const reasons: string[] = [];
+    const { prohibited, offsiteTransaction, descriptionContradictsTitle, matchesCategory, describedCondition } = judgment;
 
-  if (prohibited.kind !== 'none' && prohibited.confidence >= thresholds.rejectProhibitedConfidence) {
-    reasons.push(`prohibited: ${prohibited.kind} (confidence ${prohibited.confidence.toFixed(2)})`);
-  }
-  if (offsiteTransaction >= thresholds.rejectOffsite) {
-    reasons.push(`asks to transact off platform (p=${offsiteTransaction.toFixed(2)})`);
-  }
-  if (reasons.length > 0) {
-    return { action: 'reject', reasons, judgment };
-  }
+    if (prohibited.kind !== 'none' && prohibited.confidence >= thresholds.rejectProhibitedConfidence) {
+        reasons.push(`prohibited: ${prohibited.kind} (confidence ${prohibited.confidence.toFixed(2)})`);
+    }
+    if (offsiteTransaction >= thresholds.rejectOffsite) {
+        reasons.push(`asks to transact off platform (p=${offsiteTransaction.toFixed(2)})`);
+    }
+    if (reasons.length > 0) {
+        return { action: 'reject', reasons, judgment };
+    }
 
-  if (prohibited.kind !== 'none') {
-    reasons.push(`possible prohibited item: ${prohibited.kind} (confidence ${prohibited.confidence.toFixed(2)})`);
-  }
-  if (prohibited.kind === 'none' && prohibited.confidence < thresholds.holdNoneConfidence) {
-    reasons.push(`unsure the item is allowed (none at confidence ${prohibited.confidence.toFixed(2)})`);
-  }
-  if (offsiteTransaction >= thresholds.holdOffsite) {
-    reasons.push(`may ask to transact off platform (p=${offsiteTransaction.toFixed(2)})`);
-  }
-  if (descriptionContradictsTitle >= thresholds.holdContradiction) {
-    reasons.push(`description contradicts title (p=${descriptionContradictsTitle.toFixed(2)})`);
-  }
-  if (matchesCategory < thresholds.holdCategoryMismatch) {
-    reasons.push(`probably miscategorized (p=${matchesCategory.toFixed(2)} that it fits ${listing.category})`);
-  }
-  if (describedCondition.confidence < thresholds.holdConditionConfidence) {
-    reasons.push(`unsure about the described condition (confidence ${describedCondition.confidence.toFixed(2)})`);
-  }
-  const conditionGap = declaredConditionIndex(listing) - describedCondition.score;
-  if (conditionGap >= thresholds.holdConditionGap) {
-    reasons.push(`declared ${listing.condition} but the description reads ${describedCondition.score.toFixed(1)} on the 0 to 4 scale`);
-  }
+    if (prohibited.kind !== 'none') {
+        reasons.push(`possible prohibited item: ${prohibited.kind} (confidence ${prohibited.confidence.toFixed(2)})`);
+    }
+    if (prohibited.kind === 'none' && prohibited.confidence < thresholds.holdNoneConfidence) {
+        reasons.push(`unsure the item is allowed (none at confidence ${prohibited.confidence.toFixed(2)})`);
+    }
+    if (offsiteTransaction >= thresholds.holdOffsite) {
+        reasons.push(`may ask to transact off platform (p=${offsiteTransaction.toFixed(2)})`);
+    }
+    if (descriptionContradictsTitle >= thresholds.holdContradiction) {
+        reasons.push(`description contradicts title (p=${descriptionContradictsTitle.toFixed(2)})`);
+    }
+    if (matchesCategory < thresholds.holdCategoryMismatch) {
+        reasons.push(`probably miscategorized (p=${matchesCategory.toFixed(2)} that it fits ${listing.category})`);
+    }
+    if (describedCondition.confidence < thresholds.holdConditionConfidence) {
+        reasons.push(`unsure about the described condition (confidence ${describedCondition.confidence.toFixed(2)})`);
+    }
+    const conditionGap = declaredConditionIndex(listing) - describedCondition.score;
+    if (conditionGap >= thresholds.holdConditionGap) {
+        reasons.push(`declared ${listing.condition} but the description reads ${describedCondition.score.toFixed(1)} on the 0 to 4 scale`);
+    }
 
-  return { action: reasons.length > 0 ? 'hold' : 'publish', reasons, judgment };
+    return { action: reasons.length > 0 ? 'hold' : 'publish', reasons, judgment };
 }
 
 export async function moderate(listing: Listing): Promise<Decision> {
-  const failures = hardRuleFailures(listing);
-  if (failures.length > 0) {
-    return { action: 'reject', reasons: failures };
-  }
-  try {
-    const judgment = await judgeListing(listing);
-    return decide(listing, judgment);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { action: 'hold', reasons: [`judgment unavailable: ${message}`] };
-  }
+    const failures = hardRuleFailures(listing);
+    if (failures.length > 0) {
+        return { action: 'reject', reasons: failures };
+    }
+    try {
+        const judgment = await judgeListing(listing);
+        return decide(listing, judgment);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { action: 'hold', reasons: [`judgment unavailable: ${message}`] };
+    }
 }
 ```
 
@@ -517,198 +517,198 @@ export type Labeled = { listing: Listing; expected: 'publish' | 'hold' | 'reject
 
 // Hand-labeled for this post. In production, pull listings your moderators already decided on.
 export const LABELED: Labeled[] = [
-  {
-    expected: 'publish',
-    listing: {
-      id: 'T-01', category: 'furniture', condition: 'good', priceUsd: 35, photoCount: 3,
-      title: 'IKEA KALLAX shelf, 4x2, white',
-      description: 'Assembled, a few scratches on the top surface. Sturdy. Pickup only, second floor with elevator.',
+    {
+        expected: 'publish',
+        listing: {
+            id: 'T-01', category: 'furniture', condition: 'good', priceUsd: 35, photoCount: 3,
+            title: 'IKEA KALLAX shelf, 4x2, white',
+            description: 'Assembled, a few scratches on the top surface. Sturdy. Pickup only, second floor with elevator.',
+        },
     },
-  },
-  {
-    expected: 'publish',
-    listing: {
-      id: 'T-02', category: 'electronics', condition: 'like_new', priceUsd: 240, photoCount: 6,
-      title: 'Nintendo Switch OLED with two games',
-      description: 'Bought in 2024, works perfectly. Includes dock, two Joy-Cons, Zelda TOTK and Mario Kart 8. Screen has no scratches.',
+    {
+        expected: 'publish',
+        listing: {
+            id: 'T-02', category: 'electronics', condition: 'like_new', priceUsd: 240, photoCount: 6,
+            title: 'Nintendo Switch OLED with two games',
+            description: 'Bought in 2024, works perfectly. Includes dock, two Joy-Cons, Zelda TOTK and Mario Kart 8. Screen has no scratches.',
+        },
     },
-  },
-  {
-    expected: 'publish',
-    listing: {
-      id: 'T-03', category: 'clothing', condition: 'fair', priceUsd: 60, photoCount: 4,
-      title: 'Patagonia Nano Puff jacket, women’s M',
-      description: 'Worn two seasons, small snag on the left sleeve that I patched with tenacious tape. Zipper works fine. Smoke-free home.',
+    {
+        expected: 'publish',
+        listing: {
+            id: 'T-03', category: 'clothing', condition: 'fair', priceUsd: 60, photoCount: 4,
+            title: 'Patagonia Nano Puff jacket, women’s M',
+            description: 'Worn two seasons, small snag on the left sleeve that I patched with tenacious tape. Zipper works fine. Smoke-free home.',
+        },
     },
-  },
-  {
-    expected: 'publish',
-    listing: {
-      id: 'T-04', category: 'sporting_goods', condition: 'good', priceUsd: 380, photoCount: 5,
-      title: 'Trek Marlin 5 mountain bike, size L',
-      description: 'Ridden about 300 miles. New brake pads last month. Some chips in the paint on the down tube. Shifts clean through all gears.',
+    {
+        expected: 'publish',
+        listing: {
+            id: 'T-04', category: 'sporting_goods', condition: 'good', priceUsd: 380, photoCount: 5,
+            title: 'Trek Marlin 5 mountain bike, size L',
+            description: 'Ridden about 300 miles. New brake pads last month. Some chips in the paint on the down tube. Shifts clean through all gears.',
+        },
     },
-  },
-  {
-    expected: 'publish',
-    listing: {
-      id: 'T-05', category: 'toys_and_baby', condition: 'new', priceUsd: 420, photoCount: 3,
-      title: 'LEGO Technic Bugatti Chiron 42083, sealed',
-      description: 'Sealed in the original box, never opened. Box has a small dent on one corner from storage. Retired set.',
+    {
+        expected: 'publish',
+        listing: {
+            id: 'T-05', category: 'toys_and_baby', condition: 'new', priceUsd: 420, photoCount: 3,
+            title: 'LEGO Technic Bugatti Chiron 42083, sealed',
+            description: 'Sealed in the original box, never opened. Box has a small dent on one corner from storage. Retired set.',
+        },
     },
-  },
-  {
-    expected: 'hold',
-    listing: {
-      id: 'T-06', category: 'furniture', condition: 'good', priceUsd: 25, photoCount: 2,
-      title: 'Kitchen chef’s knife, 8 inch, Victorinox Fibrox',
-      description: 'Used in my home kitchen for a year, sharpened twice. No chips in the blade. Handle is in great shape.',
+    {
+        expected: 'hold',
+        listing: {
+            id: 'T-06', category: 'furniture', condition: 'good', priceUsd: 25, photoCount: 2,
+            title: 'Kitchen chef’s knife, 8 inch, Victorinox Fibrox',
+            description: 'Used in my home kitchen for a year, sharpened twice. No chips in the blade. Handle is in great shape.',
+        },
     },
-  },
-  {
-    expected: 'publish',
-    listing: {
-      id: 'T-07', category: 'electronics', condition: 'good', priceUsd: 1150, photoCount: 7,
-      title: 'Canon EOS R6 body only',
-      description: 'Shutter count around 18k. Works flawlessly. Comes with battery, charger, and strap. No lens included. Selling because I moved to Sony.',
+    {
+        expected: 'publish',
+        listing: {
+            id: 'T-07', category: 'electronics', condition: 'good', priceUsd: 1150, photoCount: 7,
+            title: 'Canon EOS R6 body only',
+            description: 'Shutter count around 18k. Works flawlessly. Comes with battery, charger, and strap. No lens included. Selling because I moved to Sony.',
+        },
     },
-  },
-  {
-    expected: 'hold',
-    listing: {
-      id: 'T-08', category: 'toys_and_baby', condition: 'new', priceUsd: 12, photoCount: 1,
-      title: 'Melatonin gummies, 2 sealed bottles',
-      description: 'Bought too many during a sale. Two unopened bottles, 60 gummies each, best before 2027. Standard over-the-counter sleep supplement.',
+    {
+        expected: 'hold',
+        listing: {
+            id: 'T-08', category: 'toys_and_baby', condition: 'new', priceUsd: 12, photoCount: 1,
+            title: 'Melatonin gummies, 2 sealed bottles',
+            description: 'Bought too many during a sale. Two unopened bottles, 60 gummies each, best before 2027. Standard over-the-counter sleep supplement.',
+        },
     },
-  },
-  {
-    expected: 'reject',
-    listing: {
-      id: 'T-09', category: 'sporting_goods', condition: 'new', priceUsd: 75, photoCount: 2,
-      title: 'Glock 19 magazines, 3 pack',
-      description: 'Three factory 15-round magazines, never loaded. Local meetup only.',
+    {
+        expected: 'reject',
+        listing: {
+            id: 'T-09', category: 'sporting_goods', condition: 'new', priceUsd: 75, photoCount: 2,
+            title: 'Glock 19 magazines, 3 pack',
+            description: 'Three factory 15-round magazines, never loaded. Local meetup only.',
+        },
     },
-  },
-  {
-    expected: 'reject',
-    listing: {
-      id: 'T-10', category: 'toys_and_baby', condition: 'new', priceUsd: 300, photoCount: 1,
-      title: 'Ozempic pens, 2 left',
-      description: 'Prescribed to me but I stopped using them. 2 unopened 1mg pens, kept refrigerated. Message for details.',
+    {
+        expected: 'reject',
+        listing: {
+            id: 'T-10', category: 'toys_and_baby', condition: 'new', priceUsd: 300, photoCount: 1,
+            title: 'Ozempic pens, 2 left',
+            description: 'Prescribed to me but I stopped using them. 2 unopened 1mg pens, kept refrigerated. Message for details.',
+        },
     },
-  },
-  {
-    expected: 'reject',
-    listing: {
-      id: 'T-11', category: 'electronics', condition: 'new', priceUsd: 20, photoCount: 1,
-      title: 'Netflix premium account, 1 year',
-      description: 'Private 4K profile on a shared premium account. Login details sent after payment. Warranty for 12 months.',
+    {
+        expected: 'reject',
+        listing: {
+            id: 'T-11', category: 'electronics', condition: 'new', priceUsd: 20, photoCount: 1,
+            title: 'Netflix premium account, 1 year',
+            description: 'Private 4K profile on a shared premium account. Login details sent after payment. Warranty for 12 months.',
+        },
     },
-  },
-  {
-    expected: 'reject',
-    listing: {
-      id: 'T-12', category: 'clothing', condition: 'new', priceUsd: 95, photoCount: 4,
-      title: 'Nike Air Jordan 1 Chicago, size 10',
-      description: 'Top tier batch, UA quality, comes with box and tags. Not retail but you will not be able to tell. Can ship worldwide.',
+    {
+        expected: 'reject',
+        listing: {
+            id: 'T-12', category: 'clothing', condition: 'new', priceUsd: 95, photoCount: 4,
+            title: 'Nike Air Jordan 1 Chicago, size 10',
+            description: 'Top tier batch, UA quality, comes with box and tags. Not retail but you will not be able to tell. Can ship worldwide.',
+        },
     },
-  },
-  {
-    expected: 'reject',
-    listing: {
-      id: 'T-13', category: 'toys_and_baby', condition: 'good', priceUsd: 40, photoCount: 2,
-      title: 'Chicco KeyFit 30 infant car seat',
-      description: 'Base included. No idea when it was made, the label came off. Straps have some fraying near the buckle but still clip in.',
+    {
+        expected: 'reject',
+        listing: {
+            id: 'T-13', category: 'toys_and_baby', condition: 'good', priceUsd: 40, photoCount: 2,
+            title: 'Chicco KeyFit 30 infant car seat',
+            description: 'Base included. No idea when it was made, the label came off. Straps have some fraying near the buckle but still clip in.',
+        },
     },
-  },
-  {
-    expected: 'reject',
-    listing: {
-      id: 'T-14', category: 'electronics', condition: 'like_new', priceUsd: 600, photoCount: 1,
-      title: 'MacBook Pro 14 M3, barely used',
-      description: 'Selling fast, paying with Zelle or Venmo only, I will ship after payment clears. Email me at quicksale.mbp@example.com.',
+    {
+        expected: 'reject',
+        listing: {
+            id: 'T-14', category: 'electronics', condition: 'like_new', priceUsd: 600, photoCount: 1,
+            title: 'MacBook Pro 14 M3, barely used',
+            description: 'Selling fast, paying with Zelle or Venmo only, I will ship after payment clears. Email me at quicksale.mbp@example.com.',
+        },
     },
-  },
-  {
-    expected: 'reject',
-    listing: {
-      id: 'T-15', category: 'sporting_goods', condition: 'new', priceUsd: 30, photoCount: 3,
-      title: 'Tactical push dagger, boot knife',
-      description: 'Compact fixed blade for self-defense, fits in a boot or waistband. Kydex sheath included. Razor sharp out of the box.',
+    {
+        expected: 'reject',
+        listing: {
+            id: 'T-15', category: 'sporting_goods', condition: 'new', priceUsd: 30, photoCount: 3,
+            title: 'Tactical push dagger, boot knife',
+            description: 'Compact fixed blade for self-defense, fits in a boot or waistband. Kydex sheath included. Razor sharp out of the box.',
+        },
     },
-  },
-  {
-    expected: 'reject',
-    listing: {
-      id: 'T-16', category: 'toys_and_baby', condition: 'new', priceUsd: 45, photoCount: 1,
-      title: 'Turmeric extract capsules',
-      description: 'Cures joint inflammation and reverses early arthritis in 30 days. Doctors do not want you to know about this. 3 bottles.',
+    {
+        expected: 'reject',
+        listing: {
+            id: 'T-16', category: 'toys_and_baby', condition: 'new', priceUsd: 45, photoCount: 1,
+            title: 'Turmeric extract capsules',
+            description: 'Cures joint inflammation and reverses early arthritis in 30 days. Doctors do not want you to know about this. 3 bottles.',
+        },
     },
-  },
-  {
-    expected: 'hold',
-    listing: {
-      id: 'T-17', category: 'electronics', condition: 'good', priceUsd: 350, photoCount: 2,
-      title: 'Samsung 55 inch 4K TV',
-      description: 'It is actually an LG C1 48 inch OLED, I reused an old listing title. Works great, remote included.',
+    {
+        expected: 'hold',
+        listing: {
+            id: 'T-17', category: 'electronics', condition: 'good', priceUsd: 350, photoCount: 2,
+            title: 'Samsung 55 inch 4K TV',
+            description: 'It is actually an LG C1 48 inch OLED, I reused an old listing title. Works great, remote included.',
+        },
     },
-  },
-  {
-    expected: 'hold',
-    listing: {
-      id: 'T-18', category: 'electronics', condition: 'like_new', priceUsd: 150, photoCount: 3,
-      title: 'Dyson V11 cordless vacuum',
-      description: 'Battery only holds a charge for about 5 minutes and the motor makes a grinding noise. Selling for parts or if you want to fix it.',
+    {
+        expected: 'hold',
+        listing: {
+            id: 'T-18', category: 'electronics', condition: 'like_new', priceUsd: 150, photoCount: 3,
+            title: 'Dyson V11 cordless vacuum',
+            description: 'Battery only holds a charge for about 5 minutes and the motor makes a grinding noise. Selling for parts or if you want to fix it.',
+        },
     },
-  },
-  {
-    expected: 'hold',
-    listing: {
-      id: 'T-19', category: 'clothing', condition: 'good', priceUsd: 400, photoCount: 4,
-      title: 'West Elm mid-century dining table',
-      description: 'Solid wood, seats six. One leg is a bit wobbly and there is a water ring on the top. Ships freight or local pickup.',
+    {
+        expected: 'hold',
+        listing: {
+            id: 'T-19', category: 'clothing', condition: 'good', priceUsd: 400, photoCount: 4,
+            title: 'West Elm mid-century dining table',
+            description: 'Solid wood, seats six. One leg is a bit wobbly and there is a water ring on the top. Ships freight or local pickup.',
+        },
     },
-  },
-  {
-    expected: 'hold',
-    listing: {
-      id: 'T-20', category: 'sporting_goods', condition: 'good', priceUsd: 90, photoCount: 2,
-      title: 'Wilson Pro Staff tennis racket',
-      description: 'Great racket, restrung last month. Grip is fresh. Frame has no cracks. I can also do the deal by phone if that is easier, whatever works.',
+    {
+        expected: 'hold',
+        listing: {
+            id: 'T-20', category: 'sporting_goods', condition: 'good', priceUsd: 90, photoCount: 2,
+            title: 'Wilson Pro Staff tennis racket',
+            description: 'Great racket, restrung last month. Grip is fresh. Frame has no cracks. I can also do the deal by phone if that is easier, whatever works.',
+        },
     },
-  },
-  {
-    expected: 'publish',
-    listing: {
-      id: 'T-21', category: 'clothing', condition: 'like_new', priceUsd: 40, photoCount: 3,
-      title: 'Coach leather crossbody bag',
-      description: 'Got it as a gift from a friend who travels a lot, not sure where she bought it. Leather feels a little stiff. Comes with dust bag.',
+    {
+        expected: 'publish',
+        listing: {
+            id: 'T-21', category: 'clothing', condition: 'like_new', priceUsd: 40, photoCount: 3,
+            title: 'Coach leather crossbody bag',
+            description: 'Got it as a gift from a friend who travels a lot, not sure where she bought it. Leather feels a little stiff. Comes with dust bag.',
+        },
     },
-  },
-  {
-    expected: 'publish',
-    listing: {
-      id: 'T-22', category: 'toys_and_baby', condition: 'good', priceUsd: 45, photoCount: 3,
-      title: 'Airsoft M4 replica, spring powered',
-      description: 'Toy airsoft rifle, orange tip intact, shoots plastic BBs. Comes with 2 magazines and safety glasses. For ages 16 and up.',
+    {
+        expected: 'publish',
+        listing: {
+            id: 'T-22', category: 'toys_and_baby', condition: 'good', priceUsd: 45, photoCount: 3,
+            title: 'Airsoft M4 replica, spring powered',
+            description: 'Toy airsoft rifle, orange tip intact, shoots plastic BBs. Comes with 2 magazines and safety glasses. For ages 16 and up.',
+        },
     },
-  },
-  {
-    expected: 'publish',
-    listing: {
-      id: 'T-23', category: 'toys_and_baby', condition: 'like_new', priceUsd: 50, photoCount: 3,
-      title: 'Graco Pack n Play playard',
-      description: 'Used at grandma’s house a handful of times. All parts and the mattress pad included, manufacture label from 2024 still attached.',
+    {
+        expected: 'publish',
+        listing: {
+            id: 'T-23', category: 'toys_and_baby', condition: 'like_new', priceUsd: 50, photoCount: 3,
+            title: 'Graco Pack n Play playard',
+            description: 'Used at grandma’s house a handful of times. All parts and the mattress pad included, manufacture label from 2024 still attached.',
+        },
     },
-  },
-  {
-    expected: 'publish',
-    listing: {
-      id: 'T-24', category: 'clothing', condition: 'good', priceUsd: 30, photoCount: 2,
-      title: 'Prescription glasses frames, Warby Parker',
-      description: 'Frames only, lenses removed. No scratches on the frame. Case included. Take them to any optician for new lenses.',
+    {
+        expected: 'publish',
+        listing: {
+            id: 'T-24', category: 'clothing', condition: 'good', priceUsd: 30, photoCount: 2,
+            title: 'Prescription glasses frames, Warby Parker',
+            description: 'Frames only, lenses removed. No scratches on the frame. Case included. Take them to any optician for new lenses.',
+        },
     },
-  },
 ];
 ```
 
@@ -722,12 +722,12 @@ import { decide } from './moderate';
 
 // Judge every labeled listing once, then replay candidate thresholds over the saved answers.
 const judged = await Promise.all(
-  LABELED.map(async ({ listing, expected }) => ({ listing, expected, judgment: await judgeListing(listing) })),
+    LABELED.map(async ({ listing, expected }) => ({ listing, expected, judgment: await judgeListing(listing) })),
 );
 type Judged = (typeof judged)[number];
 
 function leastConfident(rows: Judged[], confidenceOf: (row: Judged) => number): Judged | undefined {
-  return rows.reduce<Judged | undefined>((min, row) => (min === undefined || confidenceOf(row) < confidenceOf(min) ? row : min), undefined);
+    return rows.reduce<Judged | undefined>((min, row) => (min === undefined || confidenceOf(row) < confidenceOf(min) ? row : min), undefined);
 }
 
 const totalCost = judged.reduce((sum, row) => sum + row.judgment.costUsd, 0);
@@ -735,33 +735,33 @@ console.log(`judged ${judged.length} listings for $${totalCost.toFixed(6)}\n`);
 
 console.log('threshold  auto_rejected  correct  wrong  sent_to_review');
 for (const threshold of [0.5, 0.6, 0.7, 0.8, 0.9, 0.95]) {
-  const flagged = judged.filter((row) => row.judgment.prohibited.kind !== 'none');
-  const autoRejected = flagged.filter((row) => row.judgment.prohibited.confidence >= threshold);
-  const correct = autoRejected.filter((row) => row.expected === 'reject').length;
-  const wrong = autoRejected.length - correct;
-  const sentToReview = flagged.length - autoRejected.length;
-  console.log(
-    `${threshold.toFixed(2).padEnd(10)} ${String(autoRejected.length).padEnd(14)} ${String(correct).padEnd(8)} ${String(wrong).padEnd(6)} ${sentToReview}`,
-  );
+    const flagged = judged.filter((row) => row.judgment.prohibited.kind !== 'none');
+    const autoRejected = flagged.filter((row) => row.judgment.prohibited.confidence >= threshold);
+    const correct = autoRejected.filter((row) => row.expected === 'reject').length;
+    const wrong = autoRejected.length - correct;
+    const sentToReview = flagged.length - autoRejected.length;
+    console.log(
+        `${threshold.toFixed(2).padEnd(10)} ${String(autoRejected.length).padEnd(14)} ${String(correct).padEnd(8)} ${String(wrong).padEnd(6)} ${sentToReview}`,
+    );
 }
 
 console.log('\nlistings Jev flagged as prohibited:');
 for (const { listing, expected, judgment } of judged) {
-  if (judgment.prohibited.kind === 'none') continue;
-  console.log(`  ${listing.id} expected=${expected.padEnd(7)} ${judgment.prohibited.kind}@${judgment.prohibited.confidence.toFixed(2)}`);
+    if (judgment.prohibited.kind === 'none') continue;
+    console.log(`  ${listing.id} expected=${expected.padEnd(7)} ${judgment.prohibited.kind}@${judgment.prohibited.confidence.toFixed(2)}`);
 }
 
 console.log('\nlistings labeled reject that Jev did not flag as prohibited:');
 for (const { listing, expected, judgment } of judged) {
-  if (expected !== 'reject' || judgment.prohibited.kind !== 'none') continue;
-  console.log(`  ${listing.id} offsite=${judgment.offsiteTransaction.toFixed(2)}`);
+    if (expected !== 'reject' || judgment.prohibited.kind !== 'none') continue;
+    console.log(`  ${listing.id} offsite=${judgment.offsiteTransaction.toFixed(2)}`);
 }
 
 console.log('\nleast confident answers among listings labeled publish:');
 const publishable = judged.filter((row) => row.expected === 'publish');
 const shakiestNone = leastConfident(
-  publishable.filter((row) => row.judgment.prohibited.kind === 'none'),
-  (row) => row.judgment.prohibited.confidence,
+    publishable.filter((row) => row.judgment.prohibited.kind === 'none'),
+    (row) => row.judgment.prohibited.confidence,
 );
 console.log(shakiestNone ? `  none pick: ${shakiestNone.listing.id} @${shakiestNone.judgment.prohibited.confidence.toFixed(2)}` : '  none pick: no publish-labeled listing came back none');
 const shakiestCondition = leastConfident(publishable, (row) => row.judgment.describedCondition.confidence);
@@ -770,12 +770,12 @@ console.log(shakiestCondition ? `  condition score: ${shakiestCondition.listing.
 console.log('\nfull policy with THRESHOLDS vs labels:');
 let agreed = 0;
 for (const { listing, expected, judgment } of judged) {
-  const decision = decide(listing, judgment);
-  if (decision.action === expected) {
-    agreed += 1;
-    continue;
-  }
-  console.log(`  ${listing.id} expected=${expected} got=${decision.action} ${decision.reasons.join('; ') || '(no reasons)'}`);
+    const decision = decide(listing, judgment);
+    if (decision.action === expected) {
+        agreed += 1;
+        continue;
+    }
+    console.log(`  ${listing.id} expected=${expected} got=${decision.action} ${decision.reasons.join('; ') || '(no reasons)'}`);
 }
 console.log(`  ${agreed} of ${judged.length} match the label`);
 ```
@@ -794,26 +794,26 @@ threshold  auto_rejected  correct  wrong  sent_to_review
 0.95       7              7        0      2
 
 listings Jev flagged as prohibited:
-  T-08 expected=hold    medication_or_medical_claim@0.77
-  T-09 expected=reject  weapon_or_weapon_part@1.00
-  T-10 expected=reject  medication_or_medical_claim@1.00
-  T-11 expected=reject  account_or_digital_access@1.00
-  T-12 expected=reject  counterfeit_or_replica@0.99
-  T-13 expected=reject  recalled_or_unsafe_child_item@1.00
-  T-15 expected=reject  weapon_or_weapon_part@1.00
-  T-16 expected=reject  medication_or_medical_claim@1.00
-  T-22 expected=publish weapon_or_weapon_part@0.52
+    T-08 expected=hold    medication_or_medical_claim@0.77
+    T-09 expected=reject  weapon_or_weapon_part@1.00
+    T-10 expected=reject  medication_or_medical_claim@1.00
+    T-11 expected=reject  account_or_digital_access@1.00
+    T-12 expected=reject  counterfeit_or_replica@0.99
+    T-13 expected=reject  recalled_or_unsafe_child_item@1.00
+    T-15 expected=reject  weapon_or_weapon_part@1.00
+    T-16 expected=reject  medication_or_medical_claim@1.00
+    T-22 expected=publish weapon_or_weapon_part@0.52
 
 listings labeled reject that Jev did not flag as prohibited:
-  T-14 offsite=0.97
+    T-14 offsite=0.97
 
 least confident answers among listings labeled publish:
-  none pick: T-21 @0.70
-  condition score: T-24 @0.56
+    none pick: T-21 @0.70
+    condition score: T-24 @0.56
 
 full policy with THRESHOLDS vs labels:
-  T-22 expected=publish got=hold possible prohibited item: weapon_or_weapon_part (confidence 0.52)
-  23 of 24 match the label
+    T-22 expected=publish got=hold possible prohibited item: weapon_or_weapon_part (confidence 0.52)
+    23 of 24 match the label
 ```
 
 Three things to read off a run like this, in any domain.
@@ -836,77 +836,77 @@ import type { Listing } from './listing';
 import { moderate } from './moderate';
 
 const SAMPLES: Listing[] = [
-  {
-    id: 'L-101',
-    title: 'Sony WH-1000XM5 headphones, black',
-    description:
-      'Bought in 2025, used daily for commuting. Light scuff on the right earcup, everything works, battery still lasts a full week. Comes with the case and cable.',
-    category: 'electronics',
-    condition: 'good',
-    priceUsd: 190,
-    photoCount: 4,
-  },
-  {
-    id: 'L-102',
-    title: 'Louis Vuitton Neverfull MM tote',
-    description:
-      'Mirror quality 1:1, same factory as the boutique version. Nobody can tell the difference. Text me on WhatsApp for more photos and a better price.',
-    category: 'clothing',
-    condition: 'new',
-    priceUsd: 120,
-    photoCount: 3,
-  },
-  {
-    id: 'L-103',
-    title: 'Graco 4Ever DLX car seat',
-    description:
-      'Our kid outgrew it. Was in a minor fender bender last year but looks totally fine. One of the chest clip straps is missing but you can order it online.',
-    category: 'toys_and_baby',
-    condition: 'like_new',
-    priceUsd: 60,
-    photoCount: 2,
-  },
-  {
-    id: 'L-104',
-    title: 'Peloton Bike, original model',
-    description:
-      'Works great, we just never use it. Screen has a dead pixel line down the left side and the right pedal squeaks. Selling as is, no shoes or mat.',
-    category: 'sporting_goods',
-    condition: 'like_new',
-    priceUsd: 450,
-    photoCount: 5,
-  },
+    {
+        id: 'L-101',
+        title: 'Sony WH-1000XM5 headphones, black',
+        description:
+            'Bought in 2025, used daily for commuting. Light scuff on the right earcup, everything works, battery still lasts a full week. Comes with the case and cable.',
+        category: 'electronics',
+        condition: 'good',
+        priceUsd: 190,
+        photoCount: 4,
+    },
+    {
+        id: 'L-102',
+        title: 'Louis Vuitton Neverfull MM tote',
+        description:
+            'Mirror quality 1:1, same factory as the boutique version. Nobody can tell the difference. Text me on WhatsApp for more photos and a better price.',
+        category: 'clothing',
+        condition: 'new',
+        priceUsd: 120,
+        photoCount: 3,
+    },
+    {
+        id: 'L-103',
+        title: 'Graco 4Ever DLX car seat',
+        description:
+            'Our kid outgrew it. Was in a minor fender bender last year but looks totally fine. One of the chest clip straps is missing but you can order it online.',
+        category: 'toys_and_baby',
+        condition: 'like_new',
+        priceUsd: 60,
+        photoCount: 2,
+    },
+    {
+        id: 'L-104',
+        title: 'Peloton Bike, original model',
+        description:
+            'Works great, we just never use it. Screen has a dead pixel line down the left side and the right pedal squeaks. Selling as is, no shoes or mat.',
+        category: 'sporting_goods',
+        condition: 'like_new',
+        priceUsd: 450,
+        photoCount: 5,
+    },
 ];
 
 let total = 0;
 for (const listing of SAMPLES) {
-  const decision = await moderate(listing);
-  total += decision.judgment?.costUsd ?? 0;
-  console.log(`${listing.id} ${decision.action.toUpperCase()}`);
-  for (const reason of decision.reasons) console.log(`  - ${reason}`);
-  if (decision.judgment) {
-    const j = decision.judgment;
-    console.log(
-      `  prohibited=${j.prohibited.kind}@${j.prohibited.confidence.toFixed(2)} category=${j.matchesCategory.toFixed(2)} contradiction=${j.descriptionContradictsTitle.toFixed(2)} offsite=${j.offsiteTransaction.toFixed(2)} condition=${j.describedCondition.score.toFixed(2)} cost=$${j.costUsd.toFixed(6)}`,
-    );
-  }
+    const decision = await moderate(listing);
+    total += decision.judgment?.costUsd ?? 0;
+    console.log(`${listing.id} ${decision.action.toUpperCase()}`);
+    for (const reason of decision.reasons) console.log(`  - ${reason}`);
+    if (decision.judgment) {
+        const j = decision.judgment;
+        console.log(
+            `  prohibited=${j.prohibited.kind}@${j.prohibited.confidence.toFixed(2)} category=${j.matchesCategory.toFixed(2)} contradiction=${j.descriptionContradictsTitle.toFixed(2)} offsite=${j.offsiteTransaction.toFixed(2)} condition=${j.describedCondition.score.toFixed(2)} cost=$${j.costUsd.toFixed(6)}`,
+        );
+    }
 }
 console.log(`total Jev cost for ${SAMPLES.length} listings: $${total.toFixed(6)}`);
 ```
 
 ```console
 L-101 PUBLISH
-  prohibited=none@1.00 category=0.99 contradiction=0.04 offsite=0.03 condition=1.99 cost=$0.000048
+    prohibited=none@1.00 category=0.99 contradiction=0.04 offsite=0.03 condition=1.99 cost=$0.000048
 L-102 REJECT
-  - prohibited: counterfeit_or_replica (confidence 1.00)
-  - asks to transact off platform (p=0.96)
-  prohibited=counterfeit_or_replica@1.00 category=0.97 contradiction=0.06 offsite=0.96 condition=3.57 cost=$0.000047
+    - prohibited: counterfeit_or_replica (confidence 1.00)
+    - asks to transact off platform (p=0.96)
+    prohibited=counterfeit_or_replica@1.00 category=0.97 contradiction=0.06 offsite=0.96 condition=3.57 cost=$0.000047
 L-103 REJECT
-  - prohibited: recalled_or_unsafe_child_item (confidence 1.00)
-  prohibited=recalled_or_unsafe_child_item@1.00 category=0.98 contradiction=0.08 offsite=0.04 condition=0.90 cost=$0.000048
+    - prohibited: recalled_or_unsafe_child_item (confidence 1.00)
+    prohibited=recalled_or_unsafe_child_item@1.00 category=0.98 contradiction=0.08 offsite=0.04 condition=0.90 cost=$0.000048
 L-104 HOLD
-  - declared like_new but the description reads 1.0 on the 0 to 4 scale
-  prohibited=none@0.99 category=0.98 contradiction=0.07 offsite=0.04 condition=1.00 cost=$0.000047
+    - declared like_new but the description reads 1.0 on the 0 to 4 scale
+    prohibited=none@0.99 category=0.98 contradiction=0.07 offsite=0.04 condition=1.00 cost=$0.000047
 total Jev cost for 4 listings: $0.000190
 ```
 

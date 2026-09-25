@@ -1,22 +1,22 @@
 {
-  "runtime": {
-    "client_id": 1,
-    "evaluation_interval_ms": 2000,
-    "decision_order_quantity": 1,
-    "queue_capacity": 1024,
-    "instrument": { "ticker_id": 0 }
-  },
-  "risk": {
-    "max_order_size": 1,
-    "max_position": 1,
-    "max_loss": 0
-  },
-  "jev": {
-    "endpoint": "https://openrouter.ai/api/alpha/decisions",
-    "model": "typesafe/jev-1.13",
-    "timeout_ms": 4000,
-    "max_retries": 0,
-    "http_referer": "",
-    "http_title": "jev-quant"
-  }
+    "runtime": {
+        "client_id": 1,
+        "evaluation_interval_ms": 2000,
+        "decision_order_quantity": 1,
+        "queue_capacity": 1024,
+        "instrument": { "ticker_id": 0 }
+    },
+    "risk": {
+        "max_order_size": 1,
+        "max_position": 1,
+        "max_loss": 0
+    },
+    "jev": {
+        "endpoint": "https://openrouter.ai/api/alpha/decisions",
+        "model": "typesafe/jev-1.13",
+        "timeout_ms": 4000,
+        "max_retries": 0,
+        "http_referer": "",
+        "http_title": "jev-quant"
+    }
 }
