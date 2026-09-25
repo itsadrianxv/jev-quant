@@ -170,6 +170,7 @@ class AsyncLogger final {
     }
     stopped_ = false;
     started_ = true;
+    running_.store(true, std::memory_order_release);
     worker_ = std::thread([this] { run(); });
   }
 
