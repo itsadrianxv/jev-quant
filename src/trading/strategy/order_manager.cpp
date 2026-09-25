@@ -1,5 +1,6 @@
 #include "order_manager.h"
 
+#include <algorithm>
 #include <cstdlib>
 
 #include "trade_engine.h"
@@ -46,6 +47,13 @@ auto OrderManager::moveOrders(Common::TickerId ticker_id,
             Common::OrderOffset::OPEN);
 }
 
+auto OrderManager::moveOpenOrder(Common::TickerId ticker_id,
+                                 Common::Price price, Common::Side side,
+                                 Common::Qty qty) -> void {
+  auto& order = orders_.at(ticker_id).at(Common::sideToIndex(side));
+  moveOrder(order, ticker_id, price, side, qty, Common::OrderOffset::OPEN);
+}
+
 auto OrderManager::moveCloseOrder(Common::TickerId ticker_id,
                                   Common::Price price, Common::Side side,
                                   Common::Qty qty) -> void {
@@ -56,12 +64,15 @@ auto OrderManager::moveCloseOrder(Common::TickerId ticker_id,
   if (offset == Common::OrderOffset::INVALID) {
     return;
   }
-  if (risk_manager_->checkPreTradeRisk(ticker_id, side, offset, qty) !=
+  const auto available_qty = risk_manager_->closeableQty(ticker_id, offset);
+  const auto order_qty = std::min(qty, available_qty);
+  if (order_qty == 0 ||
+      risk_manager_->checkPreTradeRisk(ticker_id, side, offset, order_qty) !=
       RiskCheckResult::ALLOWED) {
     return;
   }
   auto& order = orders_.at(ticker_id).at(Common::sideToIndex(side));
-  moveOrder(order, ticker_id, price, side, qty, offset);
+  moveOrder(order, ticker_id, price, side, order_qty, offset);
 }
 
 auto OrderManager::moveOrder(OMOrder& order, Common::TickerId ticker_id,

@@ -74,6 +74,15 @@ class RiskManager final {
         .closeOffsetFor(requested_qty);
   }
 
+  [[nodiscard]] auto closeableQty(Common::TickerId ticker_id,
+                                  Common::OrderOffset offset) const noexcept
+      -> Common::Qty {
+    if (position_keeper_ == nullptr || ticker_id >= Common::ME_MAX_TICKERS) {
+      return 0;
+    }
+    return position_keeper_->getPositionInfo(ticker_id).closeableQty(offset);
+  }
+
   [[nodiscard]] auto limits() const noexcept -> const RiskLimits& {
     return limits_;
   }

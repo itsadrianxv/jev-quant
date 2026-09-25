@@ -1,6 +1,7 @@
 #include "trade_engine.h"
 
 #include <exception>
+#include <algorithm>
 #include <stdexcept>
 
 namespace Trading {
@@ -29,6 +30,7 @@ TradeEngine::TradeEngine(
     ticker_order_books_[ticker_id] =
         std::make_unique<MarketOrderBook>(ticker_id);
   }
+  next_jev_evaluation_at_ = std::chrono::steady_clock::now();
 }
 
 TradeEngine::TradeEngine(
@@ -76,6 +78,7 @@ auto TradeEngine::processPending() -> bool {
   processed = processClientResponses() || processed;
   processed = processMarketUpdates() || processed;
   processed = processJevDecisions() || processed;
+  processed = scheduleJevEvaluation() || processed;
   return processed;
 }
 
@@ -140,6 +143,31 @@ auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
           latest_evaluation_ids_.at(decision.ticker_id_)) {
     return;
   }
+
+  const auto& book = *ticker_order_books_.at(decision.ticker_id_);
+  const auto* bbo = book.getBBO();
+  if (decision.intent_ == JevIntent::OPEN) {
+    const auto side = decision.bias_ == JevBias::LONG ? Common::Side::BUY
+                                                       : Common::Side::SELL;
+    const auto price = side == Common::Side::BUY ? bbo->ask_price_
+                                                  : bbo->bid_price_;
+    if (price != Common::Price_INVALID) {
+      order_manager_.moveOpenOrder(decision.ticker_id_, price, side,
+                                   decision_order_quantity_);
+    }
+  } else if (decision.intent_ == JevIntent::CLOSE) {
+    const auto& position = position_keeper_.getPositionInfo(decision.ticker_id_);
+    if (position.position_ != 0) {
+      const auto side = position.position_ > 0 ? Common::Side::SELL
+                                                : Common::Side::BUY;
+      const auto price = side == Common::Side::BUY ? bbo->ask_price_
+                                                    : bbo->bid_price_;
+      if (price != Common::Price_INVALID) {
+        order_manager_.moveCloseOrder(decision.ticker_id_, price, side,
+                                      decision_order_quantity_);
+      }
+    }
+  }
   onJevDecision(decision);
 }
 
@@ -149,6 +177,39 @@ auto TradeEngine::registerEvaluation(Common::TickerId ticker_id,
     throw std::invalid_argument("Invalid Jev evaluation registration");
   }
   latest_evaluation_ids_.at(ticker_id) = evaluation_id;
+}
+
+auto TradeEngine::attachJevEvaluationQueue(
+    JevEvaluationStateLFQueue* evaluations,
+    std::chrono::milliseconds interval, Common::TickerId ticker_id) -> void {
+  if (evaluations == nullptr || interval.count() < 0 ||
+      ticker_id >= ticker_order_books_.size()) {
+    throw std::invalid_argument("Invalid Jev evaluation queue configuration");
+  }
+  outgoing_jev_evaluations_ = evaluations;
+  jev_evaluation_interval_ = interval;
+  jev_ticker_id_ = ticker_id;
+  next_jev_evaluation_at_ = std::chrono::steady_clock::now();
+}
+
+auto TradeEngine::scheduleJevEvaluation() -> bool {
+  if (outgoing_jev_evaluations_ == nullptr ||
+      std::chrono::steady_clock::now() < next_jev_evaluation_at_) {
+    return false;
+  }
+
+  const auto evaluation_id = next_evaluation_id_++;
+  auto state = buildJevEvaluationState(jev_ticker_id_, evaluation_id);
+  auto* slot = outgoing_jev_evaluations_->tryGetNextToWriteTo();
+  if (slot == nullptr) {
+    std::terminate();
+  }
+  *slot = state;
+  outgoing_jev_evaluations_->updateWriteIndex();
+  registerEvaluation(jev_ticker_id_, evaluation_id);
+  next_jev_evaluation_at_ = std::chrono::steady_clock::now() +
+                             jev_evaluation_interval_;
+  return true;
 }
 
 auto TradeEngine::buildJevEvaluationState(

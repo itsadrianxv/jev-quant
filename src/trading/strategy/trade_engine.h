@@ -2,9 +2,11 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <stdexcept>
 #include <thread>
 
 #include "common/lf_queue.h"
@@ -59,6 +61,17 @@ class TradeEngine final {
   auto registerEvaluation(Common::TickerId ticker_id,
                           std::uint64_t evaluation_id) -> void;
 
+  auto attachJevEvaluationQueue(JevEvaluationStateLFQueue* evaluations,
+                                std::chrono::milliseconds interval,
+                                Common::TickerId ticker_id = 0) -> void;
+
+  auto setDecisionOrderQuantity(Common::Qty quantity) -> void {
+    if (quantity == 0 || quantity == Common::Qty_INVALID) {
+      throw std::invalid_argument("Decision order quantity must be positive");
+    }
+    decision_order_quantity_ = quantity;
+  }
+
   [[nodiscard]] auto buildJevEvaluationState(Common::TickerId ticker_id,
                                               std::uint64_t evaluation_id) const
       -> JevEvaluationState;
@@ -100,6 +113,7 @@ class TradeEngine final {
   auto processClientResponses() -> bool;
   auto processMarketUpdates() -> bool;
   auto processJevDecisions() -> bool;
+  auto scheduleJevEvaluation() -> bool;
   auto handleClientResponse(const Exchange::ClientResponse& response) -> void;
   auto handleMarketUpdate(const Exchange::MarketUpdate& update,
                           const MarketOrderBook& book) -> void;
@@ -111,6 +125,12 @@ class TradeEngine final {
   OrderManager order_manager_;
   AccountState account_state_{};
   std::array<std::uint64_t, Common::ME_MAX_TICKERS> latest_evaluation_ids_{};
+  JevEvaluationStateLFQueue* outgoing_jev_evaluations_ = nullptr;
+  std::chrono::milliseconds jev_evaluation_interval_{2000};
+  std::chrono::steady_clock::time_point next_jev_evaluation_at_{};
+  Common::TickerId jev_ticker_id_ = 0;
+  std::uint64_t next_evaluation_id_ = 1;
+  Common::Qty decision_order_quantity_ = 1;
 
   Exchange::ClientRequestLFQueue* outgoing_requests_ = nullptr;
   Exchange::ClientResponseLFQueue* incoming_responses_ = nullptr;

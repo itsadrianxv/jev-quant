@@ -24,6 +24,9 @@ class OrderManager final {
   auto moveOrders(Common::TickerId ticker_id, Common::Price bid_price,
                   Common::Price ask_price, Common::Qty clip) -> void;
 
+  auto moveOpenOrder(Common::TickerId ticker_id, Common::Price price,
+                     Common::Side side, Common::Qty qty) -> void;
+
   auto moveCloseOrder(Common::TickerId ticker_id, Common::Price price,
                       Common::Side side, Common::Qty qty) -> void;
 
