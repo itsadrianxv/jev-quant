@@ -58,6 +58,10 @@ class JevWorker final {
     return running_.load(std::memory_order_acquire);
   }
 
+  [[nodiscard]] auto failureCount() const noexcept -> std::uint64_t {
+    return failure_count_.load(std::memory_order_acquire);
+  }
+
  private:
   auto run() -> void;
 
@@ -65,6 +69,7 @@ class JevWorker final {
   JevDecisionLFQueue* outgoing_decisions_ = nullptr;
   JevDecisionProvider* provider_ = nullptr;
   std::atomic<bool> running_{false};
+  std::atomic<std::uint64_t> failure_count_{0};
   std::thread worker_;
 };
 

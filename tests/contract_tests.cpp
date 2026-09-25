@@ -362,6 +362,28 @@ void testJevHttpRequestContract() {
          std::string::npos);
 }
 
+void testJevFailureAndLatestState() {
+  class FailingProvider final : public Trading::JevDecisionProvider {
+   public:
+    auto evaluate(const Trading::JevEvaluationState&) -> Trading::JevDecision override {
+      throw std::runtime_error("expected failure");
+    }
+  } provider;
+  Trading::JevEvaluationStateLFQueue states(8);
+  Trading::JevDecisionLFQueue decisions(8);
+  Trading::JevWorker worker(&states, &decisions, &provider);
+  auto* first = states.getNextToWriteTo();
+  first->evaluation_id_ = 1;
+  states.updateWriteIndex();
+  auto* second = states.getNextToWriteTo();
+  second->evaluation_id_ = 2;
+  states.updateWriteIndex();
+  CHECK(worker.processPending());
+  CHECK(states.size() == 0);
+  CHECK(decisions.size() == 0);
+  CHECK(worker.failureCount() == 1);
+}
+
 void testJevEvaluationSchedulingAndOrderMapping() {
   Exchange::ClientRequestLFQueue requests(16);
   Exchange::ClientResponseLFQueue responses(16);
@@ -438,6 +460,7 @@ int main() {
   testQueueFacingAdapters();
   testJevWorkerAndEvaluationExpiry();
   testJevHttpRequestContract();
+  testJevFailureAndLatestState();
   testJevEvaluationSchedulingAndOrderMapping();
   testYesterdayFirstPositionClose();
   return 0;
