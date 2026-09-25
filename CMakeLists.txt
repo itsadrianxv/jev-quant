@@ -17,6 +17,7 @@ add_library(jev_trading STATIC
     src/trading/order_gw/order_gateway.cpp
     src/trading/strategy/jev_worker.cpp
     src/trading/strategy/jev_http_client.cpp
+    src/trading/strategy/jev_config.cpp
     src/trading/strategy/order_manager.cpp
     src/trading/strategy/trade_engine.cpp
 )
@@ -28,6 +29,7 @@ target_compile_options(jev_trading PRIVATE -Wall -Wextra -Wpedantic)
 # remain fast and deterministic.
 option(JEV_FETCH_CURL "Build curl from source when no system package exists" OFF)
 option(JEV_FETCH_NLOHMANN_JSON "Fetch nlohmann/json when no system package exists" OFF)
+option(JEV_ENABLE_LIVE_TESTS "Build tests that call the configured OpenRouter API" OFF)
 find_package(nlohmann_json CONFIG QUIET)
 if (NOT nlohmann_json_FOUND AND JEV_FETCH_NLOHMANN_JSON)
   include(FetchContent)
@@ -96,3 +98,12 @@ target_link_libraries(contract_tests PRIVATE jev_trading)
 target_compile_options(contract_tests PRIVATE -Wall -Wextra -Wpedantic)
 
 add_test(NAME contract_tests COMMAND contract_tests)
+
+if (JEV_ENABLE_LIVE_TESTS)
+  add_executable(jev_live_smoke tests/jev_live_smoke.cpp)
+  target_link_libraries(jev_live_smoke PRIVATE jev_trading)
+  target_compile_options(jev_live_smoke PRIVATE -Wall -Wextra -Wpedantic)
+  add_test(NAME jev_live_smoke COMMAND jev_live_smoke)
+  set_tests_properties(jev_live_smoke PROPERTIES
+      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()

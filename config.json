@@ -1,0 +1,10 @@
+{
+  "jev": {
+    "endpoint": "https://openrouter.ai/api/alpha/decisions",
+    "model": "typesafe/jev-1.13",
+    "timeout_ms": 4000,
+    "max_retries": 0,
+    "http_referer": "",
+    "http_title": "jev-quant"
+  }
+}
