@@ -1,3 +1,5 @@
+<!-- Source: https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/websocket-market-streams/Live-Subscribing-Unsubscribing-to-streams.md
+     Fetched: 2026-09-25 -->
 # Live Subscribing/Unsubscribing to streams
 
 - The following data can be sent through the websocket instance in order to subscribe/unsubscribe

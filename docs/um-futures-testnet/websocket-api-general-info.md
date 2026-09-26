@@ -1,3 +1,5 @@
+<!-- Source: https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/websocket-api-general-info.md
+     Fetched: 2026-09-25 -->
 # WebSocket API General Info
 
 - The base endpoint is: **`wss://ws-fapi.binance.com/ws-fapi/v1`**

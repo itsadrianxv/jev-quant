@@ -1,3 +1,5 @@
+<!-- Source: https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/general-info.md
+     Fetched: 2026-09-25 -->
 # General Info
 
 ## General API Information

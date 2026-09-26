@@ -1,3 +1,5 @@
+<!-- Source: https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/websocket-market-streams/How-to-manage-a-local-order-book-correctly.md
+     Fetched: 2026-09-25 -->
 # How to manage a local order book correctly
 
 1. Open a stream to **wss://fstream.binance.com/public/stream?streams=btcusdt@depth**.

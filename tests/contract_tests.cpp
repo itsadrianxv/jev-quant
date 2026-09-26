@@ -22,7 +22,7 @@
 #include "trading/market_data/market_data_consumer.h"
 #include "trading/order_gw/order_gateway.h"
 #include "simulated_venue.h"
-
+#include "trading/venue/venue_adapter.h"
 namespace {
 
 [[noreturn]] void checkFailure(const char* condition, const char* file,
@@ -35,6 +35,36 @@ namespace {
 #define CHECK(condition)                                                    \
     ((condition) ? static_cast<void>(0)                                       \
                               : checkFailure(#condition, __FILE__, __LINE__))
+
+void testBinanceAdapterMapping() {
+    Trading::BinanceUmFuturesConfig config;
+    config.symbol = "BTCUSDT";
+    config.ticker_id = 0;
+    Exchange::ClientRequest request;
+    request.type_ = Exchange::ClientRequestType::NEW;
+    request.ticker_id_ = 0;
+    request.order_id_ = 42;
+    request.side_ = Common::Side::SELL;
+    request.qty_ = 3;
+    request.price_ = 100;
+    request.order_type_ = Common::OrderType::LIMIT;
+    request.offset_ = Common::OrderOffset::CLOSE_YESTERDAY;
+    const auto mapped = Trading::BinanceUmFuturesVenueAdapter::mapOrder(request, config);
+    CHECK(mapped.symbol == "BTCUSDT");
+    CHECK(mapped.side == "SELL");
+    CHECK(mapped.type == "LIMIT");
+    CHECK(mapped.time_in_force == "GTC");
+    CHECK(mapped.reduce_only);
+    CHECK(mapped.new_client_order_id == "42");
+    CHECK(Trading::BinanceUmFuturesVenueAdapter::mapOrderStatus("PARTIALLY_FILLED") ==
+          Exchange::ClientResponseType::ACCEPTED);
+    CHECK(Trading::BinanceUmFuturesVenueAdapter::mapOrderStatus("FILLED") ==
+          Exchange::ClientResponseType::FILLED);
+    CHECK(Trading::BinanceUmFuturesVenueAdapter::mapOrderStatus("EXPIRED") ==
+          Exchange::ClientResponseType::CANCELED);
+}
+
+
 
 void testQueueContract() {
     Common::LFQueue<int> queue(2);
@@ -486,6 +516,7 @@ void testJevEvaluationSchedulingAndOrderMapping() {
     CHECK(request->offset_ == Common::OrderOffset::OPEN);
 }
 
+#include "trading/venue/venue_adapter.h"
 void testYesterdayFirstPositionClose() {
     Trading::PositionInfo position;
     position.position_ = 3;
@@ -530,6 +561,7 @@ int main() {
     testJevHttpRequestContract();
     testJevFailureAndLatestState();
     testJevEvaluationSchedulingAndOrderMapping();
+    testBinanceAdapterMapping();
     testYesterdayFirstPositionClose();
     return 0;
 }

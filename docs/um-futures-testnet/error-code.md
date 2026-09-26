@@ -1,3 +1,5 @@
+<!-- Source: https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/error-code.md
+     Fetched: 2026-09-25 -->
 # Error Codes
 
 > Here is the error JSON payload:

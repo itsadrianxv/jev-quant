@@ -1,3 +1,5 @@
+<!-- Source: https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/quick-start.md
+     Fetched: 2026-09-25 -->
 # Quick Start
 
 ## API Key Setup

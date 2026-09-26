@@ -1,3 +1,5 @@
+<!-- Source: https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/websocket-market-streams/Important-WebSocket-Change-Notice.md
+     Fetched: 2026-09-25 -->
 # Important WebSocket Change Notice — Base URL Split & Migration
 
 ## Background

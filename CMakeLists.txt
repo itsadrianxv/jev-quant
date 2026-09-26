@@ -20,6 +20,8 @@ add_library(jev_trading_core STATIC
         src/trading/strategy/jev_config.cpp
         src/trading/strategy/order_manager.cpp
         src/trading/strategy/trade_engine.cpp
+        src/trading/venue/venue_adapter.cpp
+        src/trading/venue/binance_websocket_stream.cpp
 )
 target_link_libraries(jev_trading_core PUBLIC jev_domain)
 target_include_directories(jev_trading_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -40,6 +42,7 @@ endif()
 if (NOT nlohmann_json_FOUND AND NOT TARGET nlohmann_json::nlohmann_json)
     find_package(nlohmann_json CONFIG REQUIRED)
 endif()
+find_package(OpenSSL REQUIRED)
 find_package(CURL QUIET)
 if (NOT CURL_FOUND AND JEV_FETCH_CURL)
     include(FetchContent)
@@ -87,7 +90,7 @@ endif()
 if (NOT TARGET CURL::libcurl)
     message(FATAL_ERROR "libcurl was found but did not provide CURL::libcurl")
 endif()
-target_link_libraries(jev_trading_core PUBLIC CURL::libcurl)
+target_link_libraries(jev_trading_core PUBLIC CURL::libcurl OpenSSL::Crypto OpenSSL::SSL)
 target_link_libraries(jev_trading_core PUBLIC nlohmann_json::nlohmann_json)
 
 enable_testing()
@@ -104,6 +107,9 @@ target_compile_options(jev_trading PRIVATE -Wall -Wextra -Wpedantic)
 
 if (JEV_ENABLE_LIVE_TESTS)
     add_executable(jev_live_smoke tests/jev_live_smoke.cpp)
+    add_executable(binance_um_futures_smoke tests/binance_um_futures_smoke.cpp)
+    target_link_libraries(binance_um_futures_smoke PRIVATE jev_trading_core)
+    target_compile_options(binance_um_futures_smoke PRIVATE -Wall -Wextra -Wpedantic)
     target_link_libraries(jev_live_smoke PRIVATE jev_trading_core)
     target_compile_options(jev_live_smoke PRIVATE -Wall -Wextra -Wpedantic)
     add_test(NAME jev_live_smoke COMMAND jev_live_smoke)

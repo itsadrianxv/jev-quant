@@ -1,3 +1,5 @@
+<!-- Source: https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/user-data-streams.md
+     Fetched: 2026-09-25 -->
 # User Data Streams
 
 ## Connect

@@ -1,3 +1,5 @@
+<!-- Source: https://developers.binance.com/en/docs/products/derivatives-trading-usds-futures/faq/stp-faq.md
+     Fetched: 2026-09-25 -->
 # Self Trade Prevention (STP) FAQ
 
 ## What is Self Trade Prevention?

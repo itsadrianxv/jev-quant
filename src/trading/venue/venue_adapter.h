@@ -2,8 +2,16 @@
 
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
-#include <iostream>
+#include <memory>
+#include <map>
+#include <mutex>
+#include <thread>
+#include <nlohmann/json.hpp>
+#include "trading/venue/binance_websocket_stream.h"
+#include <string>
+#include <unordered_map>
 
 #include "trading/market_data/market_data_consumer.h"
 #include "trading/order_gw/order_gateway.h"
@@ -18,52 +26,71 @@ class VenueAdapter {
     [[nodiscard]] virtual auto running() const noexcept -> bool = 0;
 };
 
-/// Production-shaped seam for venue connectivity.
-///
-/// TODO: replace this adapter with the venue transport and sequencing
-/// implementation. The placeholder deliberately consumes client requests but
-/// does not manufacture market data or client responses.
-class UnimplementedVenueAdapter final : public VenueAdapter {
+struct BinanceUmFuturesConfig {
+    std::string api_key;
+    std::string secret_key;
+    std::string symbol;
+    std::uint32_t leverage = 1;
+    std::string margin_type = "ISOLATED";
+    Common::TickerId ticker_id = Common::TickerId_INVALID;
+};
+
+struct BinanceOrderParameters {
+    std::string symbol;
+    std::string side;
+    std::string type;
+    std::string quantity;
+    std::string price;
+    std::string time_in_force;
+    bool reduce_only = false;
+    std::string new_client_order_id;
+};
+
+class BinanceUmFuturesVenueAdapter final : public VenueAdapter {
   public:
-    UnimplementedVenueAdapter(MarketDataConsumer* market_data,
-                                                        OrderGateway* order_gateway)
-            : market_data_(market_data), order_gateway_(order_gateway) {}
+    BinanceUmFuturesVenueAdapter(MarketDataConsumer* market_data,
+                                 OrderGateway* order_gateway,
+                                 BinanceUmFuturesConfig config);
 
-    UnimplementedVenueAdapter(const UnimplementedVenueAdapter&) = delete;
-    UnimplementedVenueAdapter& operator=(const UnimplementedVenueAdapter&) = delete;
+    BinanceUmFuturesVenueAdapter(const BinanceUmFuturesVenueAdapter&) = delete;
+    BinanceUmFuturesVenueAdapter& operator=(const BinanceUmFuturesVenueAdapter&) = delete;
 
-    auto start() -> void override {
-        if (order_gateway_ == nullptr || market_data_ == nullptr) return;
-        order_gateway_->setRequestHandler(
-                [this](std::size_t, const Exchange::ClientRequest&) {
-                    // TODO: send the request through the venue order transport.
-                    ++unconnected_request_count_;
-                    std::clog << "Venue adapter is unimplemented; client request was not sent\n";
-                });
-        order_gateway_->start();
-        market_data_->start();
-        running_.store(true, std::memory_order_release);
-    }
+    auto start() -> void override;
+    auto stop() -> void override;
+    [[nodiscard]] auto running() const noexcept -> bool override;
 
-    auto stop() -> void override {
-        running_.store(false, std::memory_order_release);
-        if (market_data_ != nullptr) market_data_->stop();
-        if (order_gateway_ != nullptr) order_gateway_->stop();
-    }
-
-    [[nodiscard]] auto running() const noexcept -> bool override {
-        return running_.load(std::memory_order_acquire);
-    }
-
-    [[nodiscard]] auto unconnectedRequestCount() const noexcept -> std::size_t {
-        return unconnected_request_count_.load(std::memory_order_acquire);
-    }
+    [[nodiscard]] static auto loadConfigFromEnv(const std::string& path,
+                                                Common::TickerId ticker_id)
+            -> BinanceUmFuturesConfig;
+    [[nodiscard]] static auto mapOrder(const Exchange::ClientRequest& request,
+                                       const BinanceUmFuturesConfig& config)
+            -> BinanceOrderParameters;
+    [[nodiscard]] static auto mapOrderStatus(const std::string& status)
+            -> Exchange::ClientResponseType;
 
   private:
+    auto handleRequest(std::size_t sequence,
+                       const Exchange::ClientRequest& request) -> void;
+    auto publishRejected(std::size_t sequence,
+                         const Exchange::ClientRequest& request,
+                         const std::string& reason) -> void;
+
     MarketDataConsumer* market_data_ = nullptr;
     OrderGateway* order_gateway_ = nullptr;
+    BinanceUmFuturesConfig config_{};
     std::atomic<bool> running_{false};
-    std::atomic<std::size_t> unconnected_request_count_{0};
+    std::unique_ptr<BinanceWebSocketStream> depth_stream_;
+    std::unique_ptr<BinanceWebSocketStream> user_stream_;
+    std::string listen_key_;
+    std::atomic<bool> keepalive_running_{false};
+    std::thread keepalive_thread_;
+    nlohmann::json account_state_;
+    std::map<double, double> bids_;
+    std::map<double, double> asks_;
+    std::mutex book_mutex_;
+    std::uint64_t last_depth_update_id_ = 0;
+    std::unordered_map<Common::OrderId, Exchange::ClientRequest> live_orders_;
+    std::unordered_map<Common::OrderId, Common::Qty> cumulative_exec_qty_;
 };
 
 }  // namespace Trading

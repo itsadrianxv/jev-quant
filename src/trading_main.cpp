@@ -70,7 +70,8 @@ int main(int argc, char** argv) {
 
         Trading::MarketDataConsumer market_data(client_id, &market_updates);
         Trading::OrderGateway order_gateway(client_id, &client_requests, &client_responses);
-        Trading::UnimplementedVenueAdapter venue(&market_data, &order_gateway);
+        auto binance_config = Trading::BinanceUmFuturesVenueAdapter::loadConfigFromEnv(".env", ticker_id);
+        Trading::BinanceUmFuturesVenueAdapter venue(&market_data, &order_gateway, std::move(binance_config));
         auto jev_config = Trading::loadJevHttpConfig(".env", config_path);
         Trading::JevHttpClient jev_client(std::move(jev_config));
         Trading::JevWorker jev_worker(&evaluations, &decisions, &jev_client);
@@ -82,14 +83,14 @@ int main(int argc, char** argv) {
         jev_worker.start();
         std::clog << "Starting trade engine\n";
         engine.start();
-        std::clog << "Starting unimplemented venue adapter\n";
+        std::clog << "Starting Binance UM Futures demo venue adapter\n";
         venue.start();
 
         while (!stopping.load(std::memory_order_acquire)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
-        std::clog << "Stopping unimplemented venue adapter\n";
+        std::clog << "Stopping Binance UM Futures demo venue adapter\n";
         venue.stop();
         std::clog << "Stopping trade engine\n";
         engine.stop();
