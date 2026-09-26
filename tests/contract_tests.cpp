@@ -62,6 +62,8 @@ void testBinanceAdapterMapping() {
           Exchange::ClientResponseType::FILLED);
     CHECK(Trading::BinanceUmFuturesVenueAdapter::mapOrderStatus("EXPIRED") ==
           Exchange::ClientResponseType::CANCELED);
+    CHECK(Trading::BinanceUmFuturesVenueAdapter::adjustedTimestamp(10000, -3600) == 6400);
+    CHECK(Trading::BinanceUmFuturesVenueAdapter::adjustedTimestamp(10000, 125) == 10125);
 }
 
 

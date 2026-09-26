@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <map>
@@ -67,6 +68,9 @@ class BinanceUmFuturesVenueAdapter final : public VenueAdapter {
             -> BinanceOrderParameters;
     [[nodiscard]] static auto mapOrderStatus(const std::string& status)
             -> Exchange::ClientResponseType;
+    [[nodiscard]] static auto adjustedTimestamp(std::int64_t local_time_ms,
+                                                 std::int64_t server_offset_ms)
+            -> std::int64_t;
 
   private:
     auto handleRequest(std::size_t sequence,
@@ -79,6 +83,7 @@ class BinanceUmFuturesVenueAdapter final : public VenueAdapter {
     OrderGateway* order_gateway_ = nullptr;
     BinanceUmFuturesConfig config_{};
     std::atomic<bool> running_{false};
+    std::int64_t server_time_offset_ms_ = 0;
     std::unique_ptr<BinanceWebSocketStream> depth_stream_;
     std::unique_ptr<BinanceWebSocketStream> user_stream_;
     std::string listen_key_;
@@ -89,6 +94,8 @@ class BinanceUmFuturesVenueAdapter final : public VenueAdapter {
     std::map<double, double> asks_;
     std::mutex book_mutex_;
     std::uint64_t last_depth_update_id_ = 0;
+    bool depth_snapshot_ready_ = false;
+    std::deque<nlohmann::json> pending_depth_events_;
     std::unordered_map<Common::OrderId, Exchange::ClientRequest> live_orders_;
     std::unordered_map<Common::OrderId, Common::Qty> cumulative_exec_qty_;
 };

@@ -85,6 +85,8 @@ int main(int argc, char** argv) {
         engine.start();
         std::clog << "Starting Binance UM Futures demo venue adapter\n";
         venue.start();
+        std::clog << "Binance UM Futures demo venue adapter ready\n";
+        std::clog << "jev_trading running\n";
 
         while (!stopping.load(std::memory_order_acquire)) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));

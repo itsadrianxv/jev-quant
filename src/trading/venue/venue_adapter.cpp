@@ -11,6 +11,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
+#include <cctype>
 #include <vector>
 
 namespace Trading {
@@ -51,15 +52,18 @@ auto hmacSha256(const std::string& payload, const std::string& secret) -> std::s
 }
 auto signedRequest(const std::string& method, const std::string& path,
                    const std::vector<std::pair<std::string, std::string>>& params,
-                   const BinanceUmFuturesConfig& config) -> nlohmann::json {
+                   const BinanceUmFuturesConfig& config,
+                   std::int64_t server_time_offset_ms) -> nlohmann::json {
     std::string query;
     for (const auto& [key, value] : params) {
         if (!query.empty()) query += '&';
         query += key + '=' + value;
     }
-    const auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+    const auto local_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
-    query += "&timestamp=" + std::to_string(timestamp);
+    query += "&recvWindow=10000&timestamp=" + std::to_string(
+            BinanceUmFuturesVenueAdapter::adjustedTimestamp(
+                    local_time_ms, server_time_offset_ms));
     query += "&signature=" + hmacSha256(query, config.secret_key);
     auto* curl = curl_easy_init();
     if (curl == nullptr) throw std::runtime_error("curl initialization failed");
@@ -81,6 +85,30 @@ auto signedRequest(const std::string& method, const std::string& path,
     if (result != CURLE_OK) throw std::runtime_error(curl_easy_strerror(result));
     if (status < 200 || status >= 300) throw std::runtime_error("Binance REST HTTP " + std::to_string(status) + ": " + body);
     return nlohmann::json::parse(body);
+}
+auto fetchServerTimeOffset() -> std::int64_t {
+    const auto request_start = std::chrono::system_clock::now();
+    auto* curl = curl_easy_init();
+    if (curl == nullptr) throw std::runtime_error("curl initialization failed");
+    std::string body;
+    const auto url = std::string("https://demo-fapi.binance.com/fapi/v1/time");
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeBody);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 5000L);
+    const auto result = curl_easy_perform(curl);
+    const auto request_end = std::chrono::system_clock::now();
+    long status = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+    curl_easy_cleanup(curl);
+    if (result != CURLE_OK) throw std::runtime_error(std::string("Binance time request failed: ") + curl_easy_strerror(result));
+    if (status != 200) throw std::runtime_error("Binance time returned HTTP " + std::to_string(status));
+    const auto server_time = nlohmann::json::parse(body).at("serverTime").get<std::int64_t>();
+    const auto start_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            request_start.time_since_epoch()).count();
+    const auto end_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            request_end.time_since_epoch()).count();
+    return server_time - (start_ms + (end_ms - start_ms) / 2);
 }
 auto createListenKey(const BinanceUmFuturesConfig& config) -> std::string {
     auto* curl = curl_easy_init();
@@ -163,6 +191,39 @@ auto publishBook(const std::map<double, double>& bids,
     }
     consumer->publishMarketUpdate(update);
 }
+auto applyDepthEvent(const nlohmann::json& message,
+                     std::map<double, double>& bids,
+                     std::map<double, double>& asks,
+                     std::uint64_t& last_update_id) -> void {
+    if (!message.contains("U") || !message.contains("u") ||
+        !message.contains("pu") || !message.contains("b") ||
+        !message.contains("a")) {
+        throw std::runtime_error("Invalid Binance depth event");
+    }
+    const auto first = message.at("U").get<std::uint64_t>();
+    const auto final = message.at("u").get<std::uint64_t>();
+    const auto previous = message.at("pu").get<std::uint64_t>();
+    if (final <= last_update_id) return;
+    if (last_update_id != 0 && previous != last_update_id &&
+        !(first <= last_update_id + 1 && final >= last_update_id + 1)) {
+        throw std::runtime_error(
+                "Binance depth sequence gap: U=" + std::to_string(first) +
+                " u=" + std::to_string(final) +
+                " pu=" + std::to_string(previous) +
+                " last=" + std::to_string(last_update_id));
+    }
+    for (const auto& level : message.at("b")) {
+        const auto price = std::stod(level[0].get<std::string>());
+        const auto quantity = std::stod(level[1].get<std::string>());
+        if (quantity == 0.0) bids.erase(price); else bids[price] = quantity;
+    }
+    for (const auto& level : message.at("a")) {
+        const auto price = std::stod(level[0].get<std::string>());
+        const auto quantity = std::stod(level[1].get<std::string>());
+        if (quantity == 0.0) asks.erase(price); else asks[price] = quantity;
+    }
+    last_update_id = final;
+}
 auto validateExchangeInfo(const std::string& symbol) -> void {
     curl_global_init(CURL_GLOBAL_DEFAULT);
     auto* curl = curl_easy_init();
@@ -172,7 +233,9 @@ auto validateExchangeInfo(const std::string& symbol) -> void {
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeBody);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 5000L);
+    // exchangeInfo is a large all-symbol document and can take longer than
+    // the short timeout used by signed account and order requests.
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 30000L);
     const auto result = curl_easy_perform(curl);
     long status = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
@@ -189,13 +252,16 @@ auto validateExchangeInfo(const std::string& symbol) -> void {
     }
     throw std::runtime_error("Configured Binance symbol was not found in exchangeInfo");
 }
-auto validateAccountConfiguration(const BinanceUmFuturesConfig& config) -> void {
-    const auto mode = signedRequest("GET", "/fapi/v1/positionSide/dual", {}, config);
+auto validateAccountConfiguration(const BinanceUmFuturesConfig& config,
+                                  std::int64_t server_time_offset_ms) -> void {
+    const auto mode = signedRequest("GET", "/fapi/v1/positionSide/dual", {}, config,
+                                    server_time_offset_ms);
     if (mode.value("dualSidePosition", true)) {
         throw std::runtime_error("Binance account must use one-way position mode");
     }
     const auto risk = signedRequest(
-            "GET", "/fapi/v2/positionRisk", {{"symbol", config.symbol}}, config);
+            "GET", "/fapi/v2/positionRisk", {{"symbol", config.symbol}}, config,
+            server_time_offset_ms);
     if (!risk.is_array() || risk.empty()) {
         throw std::runtime_error("Binance position risk response is empty");
     }
@@ -213,6 +279,11 @@ auto sideString(Common::Side side) -> std::string {
     if (side == Common::Side::BUY) return "BUY";
     if (side == Common::Side::SELL) return "SELL";
     throw std::invalid_argument("Invalid order side");
+}
+auto lowerSymbol(std::string symbol) -> std::string {
+    std::transform(symbol.begin(), symbol.end(), symbol.begin(),
+                   [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
+    return symbol;
 }
 }  // namespace
 
@@ -291,6 +362,11 @@ auto BinanceUmFuturesVenueAdapter::mapOrderStatus(const std::string& status)
     return Exchange::ClientResponseType::REJECTED;
 }
 
+auto BinanceUmFuturesVenueAdapter::adjustedTimestamp(
+        std::int64_t local_time_ms, std::int64_t server_offset_ms) -> std::int64_t {
+    return local_time_ms + server_offset_ms;
+}
+
 auto BinanceUmFuturesVenueAdapter::start() -> void {
     if (market_data_ == nullptr || order_gateway_ == nullptr) {
         throw std::runtime_error("Binance adapter requires market data and order gateway");
@@ -299,10 +375,33 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
         throw std::runtime_error("Binance adapter configuration is incomplete");
     }
     validateExchangeInfo(config_.symbol);
-    validateAccountConfiguration(config_);
+    server_time_offset_ms_ = fetchServerTimeOffset();
+    validateAccountConfiguration(config_, server_time_offset_ms_);
+    depth_stream_ = std::make_unique<BinanceWebSocketStream>(
+            "/ws/" + lowerSymbol(config_.symbol) + "@depth@100ms",
+            [this](const nlohmann::json& message) {
+                std::lock_guard lock(book_mutex_);
+                if (!depth_snapshot_ready_) {
+                    pending_depth_events_.push_back(message);
+                    return;
+                }
+                applyDepthEvent(message, bids_, asks_, last_depth_update_id_);
+                publishBook(bids_, asks_, config_.ticker_id, market_data_);
+            },
+            [this](const std::string& error) {
+                running_.store(false, std::memory_order_release);
+                std::clog << "Binance depth stream failed: " << error << std::endl;
+                std::terminate();
+            });
+    depth_stream_->start();
+    if (!depth_stream_->waitUntilConnected(std::chrono::seconds(10))) {
+        throw std::runtime_error("Binance depth WebSocket did not connect");
+    }
     const auto depth = fetchDepth(config_.symbol);
     {
         std::lock_guard lock(book_mutex_);
+        bids_.clear();
+        asks_.clear();
         for (const auto& level : depth.at("bids")) {
             bids_[std::stod(level[0].get<std::string>())] =
                     std::stod(level[1].get<std::string>());
@@ -312,45 +411,13 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
                     std::stod(level[1].get<std::string>());
         }
         last_depth_update_id_ = depth.at("lastUpdateId").get<std::uint64_t>();
+        for (const auto& event : pending_depth_events_) {
+            applyDepthEvent(event, bids_, asks_, last_depth_update_id_);
+        }
+        pending_depth_events_.clear();
+        depth_snapshot_ready_ = true;
         publishBook(bids_, asks_, config_.ticker_id, market_data_);
     }
-    depth_stream_ = std::make_unique<BinanceWebSocketStream>(
-            config_.symbol,
-            [this](const nlohmann::json& message) {
-                if (!message.contains("U") || !message.contains("u") ||
-                    !message.contains("pu") || !message.contains("b") ||
-                    !message.contains("a")) {
-                    throw std::runtime_error("Invalid Binance depth event");
-                }
-                const auto first = message.at("U").get<std::uint64_t>();
-                const auto final = message.at("u").get<std::uint64_t>();
-                const auto previous = message.at("pu").get<std::uint64_t>();
-                std::lock_guard lock(book_mutex_);
-                if (final < last_depth_update_id_) return;
-                if (last_depth_update_id_ != 0 &&
-                    previous != last_depth_update_id_ &&
-                    !(first <= last_depth_update_id_ + 1 && final >= last_depth_update_id_ + 1)) {
-                    throw std::runtime_error("Binance depth sequence gap");
-                }
-                for (const auto& level : message.at("b")) {
-                    const auto price = std::stod(level[0].get<std::string>());
-                    const auto quantity = std::stod(level[1].get<std::string>());
-                    if (quantity == 0.0) bids_.erase(price); else bids_[price] = quantity;
-                }
-                for (const auto& level : message.at("a")) {
-                    const auto price = std::stod(level[0].get<std::string>());
-                    const auto quantity = std::stod(level[1].get<std::string>());
-                    if (quantity == 0.0) asks_.erase(price); else asks_[price] = quantity;
-                }
-                last_depth_update_id_ = final;
-                publishBook(bids_, asks_, config_.ticker_id, market_data_);
-            },
-            [this](const std::string& error) {
-                running_.store(false, std::memory_order_release);
-                std::clog << "Binance depth stream failed: " << error << std::endl;
-                std::terminate();
-            });
-    depth_stream_->start();
     listen_key_ = createListenKey(config_);
     user_stream_ = std::make_unique<BinanceWebSocketStream>(
             "/ws/" + listen_key_,
@@ -400,6 +467,9 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
                 std::terminate();
             });
     user_stream_->start();
+    if (!user_stream_->waitUntilConnected(std::chrono::seconds(10))) {
+        throw std::runtime_error("Binance user WebSocket did not connect");
+    }
     keepalive_running_.store(true, std::memory_order_release);
     keepalive_thread_ = std::thread([this] {
         for (int tick = 0; keepalive_running_.load(std::memory_order_acquire); ++tick) {
@@ -426,6 +496,10 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
 
 auto BinanceUmFuturesVenueAdapter::stop() -> void {
     running_.store(false, std::memory_order_release);
+    if (depth_stream_ != nullptr) depth_stream_->stop();
+    if (user_stream_ != nullptr) user_stream_->stop();
+    keepalive_running_.store(false, std::memory_order_release);
+    if (keepalive_thread_.joinable()) keepalive_thread_.join();
     if (market_data_ != nullptr) market_data_->stop();
     if (order_gateway_ != nullptr) order_gateway_->stop();
 }
@@ -442,7 +516,7 @@ auto BinanceUmFuturesVenueAdapter::handleRequest(
                     "DELETE", "/fapi/v1/order",
                     {{"symbol", config_.symbol},
                      {"origClientOrderId", std::to_string(request.order_id_)}},
-                    config_);
+                    config_, server_time_offset_ms_);
             Exchange::ClientResponse mapped;
             mapped.type_ = mapOrderStatus(response.value("status", "CANCELED"));
             mapped.client_id_ = request.client_id_;
@@ -468,7 +542,8 @@ auto BinanceUmFuturesVenueAdapter::handleRequest(
             params.emplace_back("price", order.price);
         }
         if (order.reduce_only) params.emplace_back("reduceOnly", "true");
-        const auto response = signedRequest("POST", "/fapi/v1/order", params, config_);
+        const auto response = signedRequest("POST", "/fapi/v1/order", params, config_,
+                                            server_time_offset_ms_);
         Exchange::ClientResponse mapped;
         mapped.type_ = Exchange::ClientResponseType::ACCEPTED;
         mapped.client_id_ = request.client_id_;
