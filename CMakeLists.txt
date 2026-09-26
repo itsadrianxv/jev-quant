@@ -27,6 +27,18 @@ target_link_libraries(jev_trading_core PUBLIC jev_domain)
 target_include_directories(jev_trading_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_options(jev_trading_core PRIVATE -Wall -Wextra -Wpedantic)
 
+option(JEV_ENABLE_SIMEX "Build the localhost simex venue adapter" ON)
+set(JEV_SIMEX_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../simex" CACHE PATH "Pinned simex source checkout")
+if(JEV_ENABLE_SIMEX)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        message(FATAL_ERROR "The simex v1 integration requires 64-bit little-endian Linux/WSL")
+    endif()
+    include(cmake/SimexProtocol.cmake)
+    target_sources(jev_trading_core PRIVATE src/trading/venue/simex_venue_adapter.cpp)
+    target_include_directories(jev_trading_core PRIVATE "${JEV_SIMEX_SOURCE_DIR}/src")
+    target_compile_definitions(jev_trading_core PUBLIC JEV_ENABLE_SIMEX=1)
+endif()
+
 # Prefer a system-provided libcurl.  Source fallback is opt-in so normal builds
 # remain fast and deterministic.
 option(JEV_FETCH_CURL "Build curl from source when no system package exists" OFF)

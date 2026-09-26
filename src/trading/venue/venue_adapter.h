@@ -13,7 +13,9 @@
 #include "trading/venue/binance_websocket_stream.h"
 #include <string>
 #include <unordered_map>
+#include <optional>
 
+#include "common/async_logger.h"
 #include "trading/market_data/market_data_consumer.h"
 #include "trading/order_gw/order_gateway.h"
 
@@ -51,7 +53,8 @@ class BinanceUmFuturesVenueAdapter final : public VenueAdapter {
   public:
     BinanceUmFuturesVenueAdapter(MarketDataConsumer* market_data,
                                  OrderGateway* order_gateway,
-                                 BinanceUmFuturesConfig config);
+                                 BinanceUmFuturesConfig config,
+                                 Common::AsyncLogger* logger = nullptr);
 
     BinanceUmFuturesVenueAdapter(const BinanceUmFuturesVenueAdapter&) = delete;
     BinanceUmFuturesVenueAdapter& operator=(const BinanceUmFuturesVenueAdapter&) = delete;
@@ -98,6 +101,7 @@ class BinanceUmFuturesVenueAdapter final : public VenueAdapter {
     std::deque<nlohmann::json> pending_depth_events_;
     std::unordered_map<Common::OrderId, Exchange::ClientRequest> live_orders_;
     std::unordered_map<Common::OrderId, Common::Qty> cumulative_exec_qty_;
+    std::optional<Common::AsyncLogger::ProducerHandle> log_handle_;
 };
 
 }  // namespace Trading

@@ -26,10 +26,22 @@ auto OrderGateway::stop() -> void {
 }
 
 auto OrderGateway::run() -> void {
+    if (logger_ != nullptr) {
+        log_handle_.emplace(logger_->registerProducer(
+                "OrderGateway", "order-gateway-" + std::to_string(client_id_) + ".log"));
+        log_handle_->bindToCurrentThread();
+        log_handle_->log(Common::LogLevel::INFO,
+                         "event=component_started client_id=" + std::to_string(client_id_));
+    }
     while (running()) {
+        if (poll_handler_) poll_handler_();
         if (!processPending()) {
             std::this_thread::yield();
         }
+    }
+    if (log_handle_) {
+        log_handle_->log(Common::LogLevel::INFO,
+                         "event=component_stopped client_id=" + std::to_string(client_id_));
     }
 }
 
@@ -41,6 +53,12 @@ auto OrderGateway::processPending() -> bool {
     bool processed = false;
     while (const auto* request = outgoing_requests_->getNextToRead()) {
         const auto sequence = next_outgoing_seq_num_++;
+        if (log_handle_) {
+            log_handle_->log(Common::LogLevel::INFO,
+                             "event=client_request_consumed client_id=" +
+                                     std::to_string(client_id_) + " sequence=" +
+                                     std::to_string(sequence));
+        }
         if (request_handler_) {
             request_handler_(sequence, *request);
         }
@@ -59,6 +77,13 @@ auto OrderGateway::publishClientResponse(
         throw std::logic_error("OrderGateway response client id mismatch");
     }
     if (seq_num != next_exp_seq_num_) {
+        if (log_handle_) {
+            log_handle_->log(Common::LogLevel::ERROR,
+                             "event=response_sequence_gap client_id=" +
+                                     std::to_string(client_id_) + " expected=" +
+                                     std::to_string(next_exp_seq_num_) + " actual=" +
+                                     std::to_string(seq_num));
+        }
         throw std::logic_error("OrderGateway response sequence gap");
     }
 
@@ -69,6 +94,12 @@ auto OrderGateway::publishClientResponse(
     *slot = response;
     incoming_responses_->updateWriteIndex();
     ++next_exp_seq_num_;
+    if (log_handle_) {
+        log_handle_->log(Common::LogLevel::INFO,
+                         "event=client_response_published client_id=" +
+                                 std::to_string(client_id_) + " sequence=" +
+                                 std::to_string(seq_num));
+    }
 }
 
 }  // namespace Trading

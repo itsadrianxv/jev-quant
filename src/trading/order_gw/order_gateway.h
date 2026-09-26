@@ -5,7 +5,9 @@
 #include <functional>
 #include <thread>
 #include <utility>
+#include <optional>
 
+#include "common/async_logger.h"
 #include "common/lf_queue.h"
 #include "common/types.h"
 #include "exchange/order_server/client_request.h"
@@ -25,10 +27,11 @@ class OrderGateway final {
 
     OrderGateway(Common::ClientId client_id,
                               Exchange::ClientRequestLFQueue* client_requests,
-                              Exchange::ClientResponseLFQueue* client_responses)
+                              Exchange::ClientResponseLFQueue* client_responses,
+                              Common::AsyncLogger* logger = nullptr)
             : client_id_(client_id),
                 outgoing_requests_(client_requests),
-                incoming_responses_(client_responses) {}
+                incoming_responses_(client_responses), logger_(logger) {}
 
     ~OrderGateway();
 
@@ -47,6 +50,9 @@ class OrderGateway final {
     void setRequestHandler(RequestHandler handler) {
         request_handler_ = std::move(handler);
     }
+
+    // Optional transport work owned by the gateway thread. Install before start.
+    void setPollHandler(std::function<void()> handler) { poll_handler_ = std::move(handler); }
 
     [[nodiscard]] auto running() const noexcept -> bool {
         return running_.load(std::memory_order_acquire);
@@ -72,8 +78,11 @@ class OrderGateway final {
     Exchange::ClientRequestLFQueue* outgoing_requests_ = nullptr;
     Exchange::ClientResponseLFQueue* incoming_responses_ = nullptr;
     RequestHandler request_handler_;
+    std::function<void()> poll_handler_;
     std::atomic<bool> running_{false};
     std::thread worker_;
+    Common::AsyncLogger* logger_ = nullptr;
+    std::optional<Common::AsyncLogger::ProducerHandle> log_handle_;
     std::size_t next_outgoing_seq_num_ = 1;
     std::size_t next_exp_seq_num_ = 1;
 };

@@ -27,6 +27,7 @@ jobs:
           cmake -S . -B build/${{ matrix.build_type }}
           -G Ninja
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DJEV_ENABLE_SIMEX=OFF
 
       - name: Build
         run: cmake --build build/${{ matrix.build_type }} --parallel

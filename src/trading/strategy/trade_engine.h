@@ -8,7 +8,9 @@
 #include <memory>
 #include <stdexcept>
 #include <thread>
+#include <optional>
 
+#include "common/async_logger.h"
 #include "common/lf_queue.h"
 #include "exchange/market_data/market_update.h"
 #include "exchange/order_server/client_request.h"
@@ -35,7 +37,8 @@ class TradeEngine final {
                             Exchange::ClientRequestLFQueue* outgoing_requests,
                             Exchange::ClientResponseLFQueue* incoming_responses,
                             Exchange::MarketUpdateLFQueue* incoming_market_updates,
-                            JevDecisionLFQueue* incoming_jev_decisions);
+                            JevDecisionLFQueue* incoming_jev_decisions,
+                            Common::AsyncLogger* logger = nullptr);
 
     TradeEngine(Exchange::ClientRequestLFQueue* outgoing_requests,
                             Exchange::ClientResponseLFQueue* incoming_responses,
@@ -70,6 +73,18 @@ class TradeEngine final {
             throw std::invalid_argument("Decision order quantity must be positive");
         }
         decision_order_quantity_ = quantity;
+    }
+
+    auto setVerboseMarketData(bool enabled) noexcept -> void {
+        verbose_market_data_ = enabled;
+    }
+
+    // Configure before starting the engine. Applies to the simex integration.
+    auto enableSimexConstraints() noexcept -> void { simex_constraints_ = true; }
+
+    [[nodiscard]] auto acceptsEvaluation(const JevEvaluationState& state) const noexcept -> bool {
+        return state.ticker_id_ < latest_evaluation_ids_.size() && state.evaluation_id_ != 0 &&
+               latest_evaluation_ids_[state.ticker_id_].load(std::memory_order_acquire) == state.evaluation_id_;
     }
 
     [[nodiscard]] auto buildJevEvaluationState(Common::TickerId ticker_id,
@@ -124,7 +139,7 @@ class TradeEngine final {
     RiskManager risk_manager_;
     OrderManager order_manager_;
     AccountState account_state_{};
-    std::array<std::uint64_t, Common::ME_MAX_TICKERS> latest_evaluation_ids_{};
+    std::array<std::atomic<std::uint64_t>, Common::ME_MAX_TICKERS> latest_evaluation_ids_{};
     std::array<bool, Common::ME_MAX_TICKERS> instrument_ready_{};
     JevEvaluationStateLFQueue* outgoing_jev_evaluations_ = nullptr;
     std::chrono::milliseconds jev_evaluation_interval_{2000};
@@ -143,6 +158,10 @@ class TradeEngine final {
 
     std::atomic<bool> running_{false};
     std::thread worker_;
+    Common::AsyncLogger* logger_ = nullptr;
+    std::optional<Common::AsyncLogger::ProducerHandle> log_handle_;
+    bool verbose_market_data_ = false;
+    bool simex_constraints_ = false;
 };
 
 }  // namespace Trading

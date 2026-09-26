@@ -155,6 +155,29 @@ void testAsyncLoggerQueueOverflowAndRegistration() {
     std::filesystem::remove_all(output_dir);
 }
 
+void testAsyncLoggerWorkerBinding() {
+    const auto output_dir = std::filesystem::temp_directory_path() /
+                                                    "jev_quant_async_logger_binding_contract";
+    std::filesystem::remove_all(output_dir);
+
+    Common::AsyncLogger logger(output_dir, 8, std::chrono::milliseconds(1));
+    auto producer = logger.registerProducer("Worker", "worker.log");
+    std::thread worker([producer = std::move(producer)]() mutable {
+        producer.bindToCurrentThread();
+        producer.log(Common::LogLevel::INFO, "event=worker_bound");
+    });
+    worker.join();
+    logger.waitForProducerBindings(1, std::chrono::seconds(5));
+    logger.start();
+    logger.stop();
+
+    std::ifstream file(output_dir / "worker.log");
+    const std::string text((std::istreambuf_iterator<char>(file)),
+                           std::istreambuf_iterator<char>());
+    CHECK(text.find("event=worker_bound") != std::string::npos);
+    std::filesystem::remove_all(output_dir);
+}
+
 void testQueueSpscConcurrency() {
     constexpr int message_count = 10'000;
     Common::LFQueue<int> queue(64);
@@ -453,6 +476,8 @@ void testJevHttpRequestContract() {
     CHECK(body.find("\"hold\":\"take no action\"") != std::string::npos);
     CHECK(body.find("\"close\":\"reduce the current position\"") ==
                   std::string::npos);
+    CHECK(body.find("\"volume\":null") != std::string::npos);
+    CHECK(body.find("\"upper_limit_price\":null") != std::string::npos);
 
     state.position_.net_position_ = 2;
     const auto occupied_body = client.buildRequestBody(state);
@@ -547,10 +572,80 @@ void testYesterdayFirstPositionClose() {
 
 }  // namespace
 
+void testSimexReadinessAndPositionGuards() {
+    Exchange::ClientRequestLFQueue requests(16);
+    Exchange::ClientResponseLFQueue responses(16);
+    Exchange::MarketUpdateLFQueue updates(16);
+    Trading::JevDecisionLFQueue decisions(16);
+    Trading::JevEvaluationStateLFQueue evaluations(16);
+    Trading::TradeEngine engine(7, {10, 10, 0}, &requests, &responses, &updates, &decisions);
+    engine.enableSimexConstraints();
+    engine.attachJevEvaluationQueue(&evaluations, std::chrono::hours(1));
+    auto depth = [&](bool available) {
+        Exchange::MarketUpdate update;
+        update.type_ = Exchange::MarketUpdateType::DEPTH_SNAPSHOT;
+        update.ticker_id_ = 0;
+        if (available) {
+            update.depth_snapshot_.bids_[0] = {99, 10};
+            update.depth_snapshot_.asks_[0] = {101, 10};
+        }
+        *updates.tryGetNextToWriteTo() = update;
+        updates.updateWriteIndex();
+        engine.processPending();
+    };
+    auto decide = [&](std::uint64_t id, Trading::JevBias bias) {
+        Trading::JevDecision decision;
+        decision.evaluation_id_ = id;
+        decision.ticker_id_ = 0;
+        decision.bias_ = bias;
+        decision.intent_ = Trading::JevIntent::OPEN;
+        *decisions.tryGetNextToWriteTo() = decision;
+        decisions.updateWriteIndex();
+        engine.processPending();
+    };
+    depth(false);
+    CHECK(evaluations.size() == 0);
+    depth(true);
+    CHECK(evaluations.size() == 1);
+    const auto stale_id = evaluations.getNextToRead()->evaluation_id_;
+    evaluations.updateReadIndex();
+    depth(false);
+    depth(true);
+    decide(stale_id, Trading::JevBias::LONG);
+    CHECK(requests.size() == 0);
+    engine.registerEvaluation(0, 100);
+    decide(100, Trading::JevBias::LONG);
+    CHECK(requests.size() == 1);
+    const auto request = *requests.getNextToRead();
+    requests.updateReadIndex();
+    engine.registerEvaluation(0, 101);
+    decide(101, Trading::JevBias::SHORT);
+    CHECK(requests.size() == 0);  // Pending opposite OPEN still reserves direction.
+    Exchange::ClientResponse fill;
+    fill.type_ = Exchange::ClientResponseType::FILLED;
+    fill.client_id_ = 7;
+    fill.ticker_id_ = 0;
+    fill.client_order_id_ = request.order_id_;
+    fill.side_ = Common::Side::BUY;
+    fill.offset_ = Common::OrderOffset::OPEN;
+    fill.price_ = 101;
+    fill.exec_qty_ = 1;
+    fill.leaves_qty_ = 0;
+    *responses.tryGetNextToWriteTo() = fill;
+    responses.updateWriteIndex();
+    engine.processPending();
+    CHECK(engine.positionKeeper().getPositionInfo(0).position_ == 1);
+    engine.registerEvaluation(0, 102);
+    decide(102, Trading::JevBias::SHORT);
+    CHECK(requests.size() == 0);  // An opposite OPEN is not a close.
+}
+
 int main() {
+    testSimexReadinessAndPositionGuards();
     testQueueContract();
     testAsyncLoggerContract();
     testAsyncLoggerQueueOverflowAndRegistration();
+    testAsyncLoggerWorkerBinding();
     testQueueSpscConcurrency();
     testMessageContract();
     testMarketOrderBookContract();

@@ -2,7 +2,10 @@
 
 #include <atomic>
 #include <thread>
+#include <optional>
+#include <functional>
 
+#include "common/async_logger.h"
 #include "jev_decision.h"
 
 namespace Trading {
@@ -38,10 +41,11 @@ class JevWorker final {
   public:
     JevWorker(JevEvaluationStateLFQueue* incoming_states,
                         JevDecisionLFQueue* outgoing_decisions,
-                        JevDecisionProvider* provider)
+                        JevDecisionProvider* provider,
+                        Common::AsyncLogger* logger = nullptr)
             : incoming_states_(incoming_states),
                 outgoing_decisions_(outgoing_decisions),
-                provider_(provider) {}
+                provider_(provider), logger_(logger) {}
 
     ~JevWorker();
 
@@ -53,6 +57,11 @@ class JevWorker final {
     auto start() -> void;
     auto stop() -> void;
     auto processPending() -> bool;
+
+    // Install before start; the filter may read only thread-safe engine state.
+    void setEvaluationFilter(std::function<bool(const JevEvaluationState&)> filter) {
+        evaluation_filter_ = std::move(filter);
+    }
 
     [[nodiscard]] auto running() const noexcept -> bool {
         return running_.load(std::memory_order_acquire);
@@ -68,9 +77,12 @@ class JevWorker final {
     JevEvaluationStateLFQueue* incoming_states_ = nullptr;
     JevDecisionLFQueue* outgoing_decisions_ = nullptr;
     JevDecisionProvider* provider_ = nullptr;
+    std::function<bool(const JevEvaluationState&)> evaluation_filter_;
     std::atomic<bool> running_{false};
     std::atomic<std::uint64_t> failure_count_{0};
     std::thread worker_;
+    Common::AsyncLogger* logger_ = nullptr;
+    std::optional<Common::AsyncLogger::ProducerHandle> log_handle_;
 };
 
 }  // namespace Trading

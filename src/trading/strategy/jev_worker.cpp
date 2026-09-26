@@ -26,10 +26,18 @@ auto JevWorker::stop() -> void {
 }
 
 auto JevWorker::run() -> void {
+    if (logger_ != nullptr) {
+        log_handle_.emplace(logger_->registerProducer("JevWorker", "jev-worker.log"));
+        log_handle_->bindToCurrentThread();
+        log_handle_->log(Common::LogLevel::INFO, "event=component_started");
+    }
     while (running()) {
         if (!processPending()) {
             std::this_thread::yield();
         }
+    }
+    if (log_handle_) {
+        log_handle_->log(Common::LogLevel::INFO, "event=component_stopped");
     }
 }
 
@@ -41,12 +49,21 @@ auto JevWorker::processPending() -> bool {
 
     const JevEvaluationState* newest = nullptr;
     JevEvaluationState latest;
+    std::size_t drained = 0;
     while (const auto* state = incoming_states_->getNextToRead()) {
         latest = *state;
         newest = &latest;
+        ++drained;
         incoming_states_->updateReadIndex();
     }
     if (newest == nullptr) return false;
+    if (evaluation_filter_ && !evaluation_filter_(*newest)) return true;
+    if (log_handle_) {
+        log_handle_->log(Common::LogLevel::INFO,
+                         "event=evaluation_batch_drained count=" +
+                                 std::to_string(drained) + " latest_evaluation_id=" +
+                                 std::to_string(newest->evaluation_id_));
+    }
 
     try {
         auto decision = provider_->evaluate(*newest);
@@ -63,8 +80,16 @@ auto JevWorker::processPending() -> bool {
         }
         *slot = decision;
         outgoing_decisions_->updateWriteIndex();
+        if (log_handle_) {
+            log_handle_->log(Common::LogLevel::INFO,
+                             "event=decision_enqueued evaluation_id=" +
+                                     std::to_string(decision.evaluation_id_));
+        }
     } catch (const std::exception&) {
         failure_count_.fetch_add(1, std::memory_order_acq_rel);
+        if (log_handle_) {
+            log_handle_->log(Common::LogLevel::ERROR, "event=provider_failure");
+        }
     }
     return true;
 }

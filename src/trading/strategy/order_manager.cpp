@@ -15,6 +15,8 @@ auto OrderManager::onOrderUpdate(const Exchange::ClientResponse& response)
 
     auto& order = orders_.at(response.ticker_id_).at(
             Common::sideToIndex(response.side_));
+    // A late cancel rejection must not change a newer order on the same side.
+    if (order.order_id_ != response.client_order_id_) return;
     switch (response.type_) {
         case Exchange::ClientResponseType::ACCEPTED:
             order.order_state_ = OMOrderState::LIVE;
@@ -30,6 +32,8 @@ auto OrderManager::onOrderUpdate(const Exchange::ClientResponse& response)
             order.order_state_ = OMOrderState::DEAD;
             break;
         case Exchange::ClientResponseType::CANCEL_REJECTED:
+            if (order.order_state_ == OMOrderState::PENDING_CANCEL) order.order_state_ = OMOrderState::LIVE;
+            break;
         case Exchange::ClientResponseType::INVALID:
             break;
     }
@@ -137,6 +141,7 @@ auto OrderManager::cancelOrder(OMOrder& order) -> void {
 
     Exchange::ClientRequest request;
     request.type_ = Exchange::ClientRequestType::CANCEL;
+    request.client_id_ = client_id_;
     request.ticker_id_ = order.ticker_id_;
     request.order_id_ = order.order_id_;
     request.side_ = order.side_;

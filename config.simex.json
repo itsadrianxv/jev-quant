@@ -1,0 +1,29 @@
+{
+  "venue": {
+    "type": "simex",
+    "host": "127.0.0.1",
+    "tcp_port": 19001,
+    "udp_port": 19002,
+    "connect_timeout_ms": 5000,
+    "feed_timeout_ms": 5000,
+    "buffer_capacity": 4096
+  },
+  "runtime": {
+    "client_id": 1,
+    "evaluation_interval_ms": 5000,
+    "decision_order_quantity": 1,
+    "queue_capacity": 4096,
+    "run_seconds": 0,
+    "instrument": { "ticker_id": 0 }
+  },
+  "risk": { "max_order_size": 1, "max_position": 1, "max_loss": 0 },
+  "jev": {
+    "endpoint": "https://openrouter.ai/api/alpha/decisions",
+    "model": "typesafe/jev-1.13",
+    "timeout_ms": 4000,
+    "max_retries": 0,
+    "http_referer": "",
+    "http_title": "jev-quant"
+  },
+  "logging": { "output_directory": "logs/simex", "verbose_market_data": false }
+}

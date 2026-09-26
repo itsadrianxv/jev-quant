@@ -43,6 +43,12 @@ auto JevHttpClient::buildRequestBody(const JevEvaluationState& state) const
         -> std::string {
     const auto& position = state.position_;
     const auto& depth = state.depth_snapshot_;
+    const auto priceValue = [](Common::Price value) -> Json {
+        return value == Common::Price_INVALID ? Json(nullptr) : Json(value);
+    };
+    const auto qtyValue = [](Common::Qty value) -> Json {
+        return value == Common::Qty_INVALID ? Json(nullptr) : Json(value);
+    };
     const Json criteria = position.net_position_ == 0
                                                         ? Json{{"open", "open a position"}, {"hold", "take no action"}}
                                                         : Json{{"open", "increase exposure"},
@@ -50,31 +56,34 @@ auto JevHttpClient::buildRequestBody(const JevEvaluationState& state) const
                                                                       {"hold", "take no action"}};
     Json working_orders = Json::array();
     for (const auto& order : state.working_orders_) {
+        if (order.state_ == OMOrderState::INVALID || order.state_ == OMOrderState::DEAD) continue;
         working_orders.push_back({{"order_id", order.order_id_},
                                                             {"side", Common::sideToString(order.side_)},
-                                                            {"price", order.price_}, {"qty", order.qty_},
+                                                            {"price", priceValue(order.price_)}, {"qty", qtyValue(order.qty_)},
                                                             {"order_type", Common::orderTypeToString(order.order_type_)},
                                                             {"offset", Common::orderOffsetToString(order.offset_)},
                                                             {"state", omOrderStateToString(order.state_)}});
     }
     Json bids = Json::array();
     for (const auto& level : depth.bids_)
-        bids.push_back({{"price", level.price_}, {"qty", level.qty_}});
+        if (level.price_ != Common::Price_INVALID && level.qty_ != Common::Qty_INVALID && level.qty_ > 0)
+            bids.push_back({{"price", level.price_}, {"qty", level.qty_}});
     Json asks = Json::array();
     for (const auto& level : depth.asks_)
-        asks.push_back({{"price", level.price_}, {"qty", level.qty_}});
+        if (level.price_ != Common::Price_INVALID && level.qty_ != Common::Qty_INVALID && level.qty_ > 0)
+            asks.push_back({{"price", level.price_}, {"qty", level.qty_}});
     const Json state_json = {
             {"evaluation_id", state.evaluation_id_}, {"ticker_id", state.ticker_id_},
             {"position", {{"net", position.net_position_}, {"today", position.today_qty_},
                                           {"yesterday", position.yesterday_qty_},
-                                          {"average_entry_price", position.average_entry_price_},
+                                          {"average_entry_price", priceValue(position.average_entry_price_)},
                                           {"realized_pnl", position.realized_pnl_},
                                           {"unrealized_pnl", position.unrealized_pnl_}}},
             {"working_orders", working_orders},
-            {"depth", {{"last_price", depth.last_price_}, {"bids", bids}, {"asks", asks},
-                                    {"volume", depth.volume_}, {"open_interest", depth.open_interest_},
-                                    {"upper_limit_price", depth.upper_limit_price_},
-                                    {"lower_limit_price", depth.lower_limit_price_}}},
+            {"depth", {{"last_price", priceValue(depth.last_price_)}, {"bids", bids}, {"asks", asks},
+                                    {"volume", qtyValue(depth.volume_)}, {"open_interest", depth.open_interest_},
+                                    {"upper_limit_price", priceValue(depth.upper_limit_price_)},
+                                    {"lower_limit_price", priceValue(depth.lower_limit_price_)}}},
             {"account", {{"available_margin", state.account_.available_margin_},
                                         {"used_margin", state.account_.used_margin_},
                                         {"equity", state.account_.equity_}}},

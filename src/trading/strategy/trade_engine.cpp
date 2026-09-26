@@ -3,6 +3,7 @@
 #include <exception>
 #include <algorithm>
 #include <stdexcept>
+#include <sstream>
 
 namespace Trading {
 
@@ -11,7 +12,8 @@ TradeEngine::TradeEngine(
         Exchange::ClientRequestLFQueue* outgoing_requests,
         Exchange::ClientResponseLFQueue* incoming_responses,
         Exchange::MarketUpdateLFQueue* incoming_market_updates,
-        JevDecisionLFQueue* incoming_jev_decisions)
+        JevDecisionLFQueue* incoming_jev_decisions,
+        Common::AsyncLogger* logger)
         : client_id_(client_id),
             position_keeper_(),
             risk_manager_(&position_keeper_, risk_limits),
@@ -19,7 +21,7 @@ TradeEngine::TradeEngine(
             outgoing_requests_(outgoing_requests),
             incoming_responses_(incoming_responses),
             incoming_market_updates_(incoming_market_updates),
-            incoming_jev_decisions_(incoming_jev_decisions) {
+            incoming_jev_decisions_(incoming_jev_decisions), logger_(logger) {
     if (outgoing_requests_ == nullptr || incoming_responses_ == nullptr ||
             incoming_market_updates_ == nullptr || incoming_jev_decisions_ == nullptr) {
         throw std::invalid_argument("TradeEngine queues must not be null");
@@ -66,10 +68,21 @@ auto TradeEngine::stop() -> void {
 }
 
 auto TradeEngine::run() -> void {
+    if (logger_ != nullptr) {
+        log_handle_.emplace(logger_->registerProducer(
+                "TradeEngine", "trade-engine-" + std::to_string(client_id_) + ".log"));
+        log_handle_->bindToCurrentThread();
+        log_handle_->log(Common::LogLevel::INFO,
+                         "event=component_started client_id=" + std::to_string(client_id_));
+    }
     while (running()) {
         if (!processPending()) {
             std::this_thread::yield();
         }
+    }
+    if (log_handle_) {
+        log_handle_->log(Common::LogLevel::INFO,
+                         "event=component_stopped client_id=" + std::to_string(client_id_));
     }
 }
 
@@ -85,6 +98,12 @@ auto TradeEngine::processPending() -> bool {
 auto TradeEngine::processClientResponses() -> bool {
     bool processed = false;
     while (const auto* response = incoming_responses_->getNextToRead()) {
+        if (log_handle_) {
+            log_handle_->log(Common::LogLevel::INFO,
+                             "event=client_response_consumed client_id=" +
+                                     std::to_string(client_id_) + " ticker_id=" +
+                                     std::to_string(response->ticker_id_));
+        }
         handleClientResponse(*response);
         incoming_responses_->updateReadIndex();
         processed = true;
@@ -100,6 +119,13 @@ auto TradeEngine::processMarketUpdates() -> bool {
         }
 
         auto& book = *ticker_order_books_.at(update->ticker_id_);
+        if (log_handle_ && (verbose_market_data_ ||
+                            update->type_ == Exchange::MarketUpdateType::DEPTH_SNAPSHOT)) {
+            log_handle_->log(Common::LogLevel::DEBUG,
+                             "event=market_update_consumed client_id=" +
+                                     std::to_string(client_id_) + " ticker_id=" +
+                                     std::to_string(update->ticker_id_));
+        }
         book.onMarketUpdate(*update);
         handleMarketUpdate(*update, book);
         incoming_market_updates_->updateReadIndex();
@@ -111,6 +137,12 @@ auto TradeEngine::processMarketUpdates() -> bool {
 auto TradeEngine::processJevDecisions() -> bool {
     bool processed = false;
     while (const auto* decision = incoming_jev_decisions_->getNextToRead()) {
+        if (log_handle_) {
+            log_handle_->log(Common::LogLevel::INFO,
+                             "event=decision_consumed client_id=" +
+                                     std::to_string(client_id_) + " evaluation_id=" +
+                                     std::to_string(decision->evaluation_id_));
+        }
         handleJevDecision(*decision);
         incoming_jev_decisions_->updateReadIndex();
         processed = true;
@@ -124,7 +156,16 @@ auto TradeEngine::handleClientResponse(
         return;
     }
     if (response.type_ == Exchange::ClientResponseType::FILLED) {
+        const auto expected_position = static_cast<std::int64_t>(position_keeper_.getPositionInfo(response.ticker_id_).position_) +
+                Common::sideToValue(response.side_) * static_cast<std::int64_t>(response.exec_qty_);
         position_keeper_.onClientResponse(response);
+        if (simex_constraints_) {
+            const auto& position = position_keeper_.getPositionInfo(response.ticker_id_);
+            if (position.position_ != expected_position ||
+                static_cast<std::uint64_t>(position.todayQty()) + position.yesterdayQty() !=
+                    static_cast<std::uint64_t>(std::abs(expected_position)))
+                throw std::logic_error("Simex execution and participant position disagree");
+        }
     }
     order_manager_.onOrderUpdate(response);
     onClientResponse(response);
@@ -135,7 +176,14 @@ auto TradeEngine::handleMarketUpdate(const Exchange::MarketUpdate& update,
     position_keeper_.updateBBO(update.ticker_id_, book.getBBO());
     if (update.type_ == Exchange::MarketUpdateType::DEPTH_SNAPSHOT &&
             update.ticker_id_ < instrument_ready_.size()) {
-        instrument_ready_.at(update.ticker_id_) = true;
+        const auto* bbo = book.getBBO();
+        const bool ready = !simex_constraints_ ||
+                (bbo->bid_price_ > 0 && bbo->bid_price_ != Common::Price_INVALID &&
+                 bbo->ask_price_ > bbo->bid_price_ && bbo->ask_price_ != Common::Price_INVALID &&
+                 bbo->bid_qty_ > 0 && bbo->bid_qty_ != Common::Qty_INVALID &&
+                 bbo->ask_qty_ > 0 && bbo->ask_qty_ != Common::Qty_INVALID);
+        instrument_ready_.at(update.ticker_id_) = ready;
+        if (!ready) latest_evaluation_ids_.at(update.ticker_id_) = 0;
     }
     onMarketUpdate(update, book);
 }
@@ -145,14 +193,40 @@ auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
             decision.evaluation_id_ == 0 ||
             decision.evaluation_id_ !=
                     latest_evaluation_ids_.at(decision.ticker_id_)) {
+        if (log_handle_) {
+            log_handle_->log(Common::LogLevel::WARN,
+                             "event=stale_decision_dropped client_id=" +
+                                     std::to_string(client_id_) + " evaluation_id=" +
+                                     std::to_string(decision.evaluation_id_));
+        }
         return;
     }
+
+    if (simex_constraints_ && !instrument_ready_.at(decision.ticker_id_)) return;
 
     const auto& book = *ticker_order_books_.at(decision.ticker_id_);
     const auto* bbo = book.getBBO();
     if (decision.intent_ == JevIntent::OPEN) {
         const auto side = decision.bias_ == JevBias::LONG ? Common::Side::BUY
                                                                                                               : Common::Side::SELL;
+        if (simex_constraints_) {
+            const auto position = position_keeper_.getPositionInfo(decision.ticker_id_).position_;
+            const auto& opposite = order_manager_.getOrder(decision.ticker_id_,
+                    side == Common::Side::BUY ? Common::Side::SELL : Common::Side::BUY);
+            const bool outstanding = opposite.order_state_ != OMOrderState::INVALID &&
+                                     opposite.order_state_ != OMOrderState::DEAD &&
+                                     opposite.offset_ == Common::OrderOffset::OPEN;
+            if ((position > 0 && side == Common::Side::SELL) ||
+                (position < 0 && side == Common::Side::BUY) || outstanding) {
+                if (log_handle_) log_handle_->log(Common::LogLevel::WARN, "event=opposite_open_blocked");
+                onJevDecision(decision);
+                return;
+            }
+        }
+        // TODO(simex-counterparty): After observing replenishment and fills, decide
+        // whether simex orders should keep crossing at the current best quote or
+        // rest passively, and define their reprice/cancel lifetime. Keep the current
+        // LIMIT behavior until that execution policy is agreed; Jev still owns intent.
         const auto price = side == Common::Side::BUY ? bbo->ask_price_
                                                                                                     : bbo->bid_price_;
         if (price != Common::Price_INVALID) {
@@ -209,9 +283,16 @@ auto TradeEngine::scheduleJevEvaluation() -> bool {
     if (slot == nullptr) {
         std::terminate();
     }
+    registerEvaluation(jev_ticker_id_, evaluation_id);
     *slot = state;
     outgoing_jev_evaluations_->updateWriteIndex();
-    registerEvaluation(jev_ticker_id_, evaluation_id);
+    if (log_handle_) {
+        log_handle_->log(Common::LogLevel::INFO,
+                         "event=evaluation_enqueued client_id=" +
+                                 std::to_string(client_id_) + " evaluation_id=" +
+                                 std::to_string(evaluation_id) + " ticker_id=" +
+                                 std::to_string(jev_ticker_id_));
+    }
     next_jev_evaluation_at_ = std::chrono::steady_clock::now() +
                                                           jev_evaluation_interval_;
     return true;
@@ -263,6 +344,12 @@ auto TradeEngine::sendClientRequest(const Exchange::ClientRequest& request)
     }
     *slot = request;
     outgoing_requests_->updateWriteIndex();
+    if (log_handle_) {
+        log_handle_->log(Common::LogLevel::INFO,
+                         "event=client_request_enqueued client_id=" +
+                                 std::to_string(client_id_) + " ticker_id=" +
+                                 std::to_string(request.ticker_id_));
+    }
 }
 
 }  // namespace Trading

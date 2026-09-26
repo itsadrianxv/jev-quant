@@ -289,9 +289,15 @@ auto lowerSymbol(std::string symbol) -> std::string {
 
 BinanceUmFuturesVenueAdapter::BinanceUmFuturesVenueAdapter(
         MarketDataConsumer* market_data, OrderGateway* order_gateway,
-        BinanceUmFuturesConfig config)
+        BinanceUmFuturesConfig config, Common::AsyncLogger* logger)
     : market_data_(market_data), order_gateway_(order_gateway),
-      config_(std::move(config)) {}
+      config_(std::move(config)) {
+    if (logger != nullptr) {
+        log_handle_.emplace(logger->registerProducer(
+                "Venue", "venue-" + std::to_string(config_.ticker_id) + ".log"));
+        log_handle_->bindToCurrentThread();
+    }
+}
 
 auto BinanceUmFuturesVenueAdapter::loadConfigFromEnv(
         const std::string& path, Common::TickerId ticker_id)
@@ -368,6 +374,9 @@ auto BinanceUmFuturesVenueAdapter::adjustedTimestamp(
 }
 
 auto BinanceUmFuturesVenueAdapter::start() -> void {
+    if (log_handle_) {
+        log_handle_->log(Common::LogLevel::INFO, "event=component_started");
+    }
     if (market_data_ == nullptr || order_gateway_ == nullptr) {
         throw std::runtime_error("Binance adapter requires market data and order gateway");
     }
@@ -495,6 +504,9 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
 }
 
 auto BinanceUmFuturesVenueAdapter::stop() -> void {
+    if (log_handle_) {
+        log_handle_->log(Common::LogLevel::INFO, "event=component_stopped");
+    }
     running_.store(false, std::memory_order_release);
     if (depth_stream_ != nullptr) depth_stream_->stop();
     if (user_stream_ != nullptr) user_stream_->stop();
