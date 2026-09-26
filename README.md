@@ -54,6 +54,10 @@ src/
 tests/
 ```
 
+## Note
+
+I am very, very early in this project. Expect bugs.
+
 ## License
 
 MIT
