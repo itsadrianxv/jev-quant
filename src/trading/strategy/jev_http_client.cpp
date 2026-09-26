@@ -135,7 +135,8 @@ auto JevHttpClient::parseDecision(const std::string& body,
     decision.long_probability_ = probability(bias.at("probabilities"), "long");
     decision.short_probability_ = probability(bias.at("probabilities"), "short");
     decision.open_probability_ = probability(intent.at("probabilities"), "open");
-    decision.close_probability_ = probability(intent.at("probabilities"), "close");
+    decision.close_probability_ = state.position_.net_position_ == 0
+                                          ? 0.0 : probability(intent.at("probabilities"), "close");
     decision.hold_probability_ = probability(intent.at("probabilities"), "hold");
     decision.confidence_ = confidence;
     return decision;

@@ -485,6 +485,41 @@ void testJevHttpRequestContract() {
                   std::string::npos);
 }
 
+void testJevHttpFlatPositionResponse() {
+    Trading::JevEvaluationState state;
+    state.evaluation_id_ = 9;
+    state.ticker_id_ = 0;
+    state.position_.net_position_ = 0;
+    const auto flat_response = R"({
+        "answers": {
+            "bias": {
+                "type": "choice", "choice": "long",
+                "probabilities": {"long": 0.9, "short": 0.1}, "confidence": 0.8
+            },
+            "intent": {
+                "type": "choice", "choice": "hold",
+                "probabilities": {"open": 0.2, "hold": 0.8}, "confidence": 0.7
+            }
+        }
+    })";
+
+    const auto flat_decision = Trading::JevHttpClient::parseDecision(flat_response, state);
+    CHECK(flat_decision.evaluation_id_ == 9);
+    CHECK(flat_decision.intent_ == Trading::JevIntent::HOLD);
+    CHECK(flat_decision.open_probability_ == 0.2);
+    CHECK(flat_decision.close_probability_ == 0.0);
+    CHECK(flat_decision.hold_probability_ == 0.8);
+
+    state.position_.net_position_ = 2;
+    bool missing_close_rejected = false;
+    try {
+        (void)Trading::JevHttpClient::parseDecision(flat_response, state);
+    } catch (const std::runtime_error&) {
+        missing_close_rejected = true;
+    }
+    CHECK(missing_close_rejected);
+}
+
 void testJevFailureAndLatestState() {
     class FailingProvider final : public Trading::JevDecisionProvider {
       public:
@@ -656,6 +691,7 @@ int main() {
     testQueueFacingAdapters();
     testJevWorkerAndEvaluationExpiry();
     testJevHttpRequestContract();
+    testJevHttpFlatPositionResponse();
     testJevFailureAndLatestState();
     testJevEvaluationSchedulingAndOrderMapping();
     testBinanceAdapterMapping();

@@ -28,11 +28,11 @@ class JevHttpClient final : public JevDecisionProvider {
     [[nodiscard]] auto buildRequestBody(const JevEvaluationState& state) const
             -> std::string;
 
-  private:
-    JevHttpConfig config_;
-
     static auto parseDecision(const std::string& body,
                                                         const JevEvaluationState& state) -> JevDecision;
+
+  private:
+    JevHttpConfig config_;
 };
 
 }  // namespace Trading
