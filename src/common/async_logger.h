@@ -3,6 +3,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -72,6 +73,7 @@ class AsyncLogger final {
         std::string component;
         LFQueue<LogRecord> queue;
         std::ofstream file;
+        std::atomic<bool> bound{false};
     };
 
   public:
@@ -82,19 +84,25 @@ class AsyncLogger final {
         ProducerHandle& operator=(const ProducerHandle&) = delete;
         ProducerHandle(ProducerHandle&& other) noexcept
                 : state_(std::exchange(other.state_, nullptr)),
-                    owner_(std::exchange(other.owner_, std::thread::id{})) {}
+                    owner_(std::exchange(other.owner_, std::thread::id{})),
+                    owner_logger_(std::exchange(other.owner_logger_, nullptr)) {}
         ProducerHandle& operator=(ProducerHandle&& other) noexcept {
             if (this != &other) {
                 state_ = std::exchange(other.state_, nullptr);
                 owner_ = std::exchange(other.owner_, std::thread::id{});
+                owner_logger_ = std::exchange(other.owner_logger_, nullptr);
             }
             return *this;
         }
 
         auto log(LogLevel level, std::string_view message) noexcept -> void {
-            if (state_ == nullptr || owner_ != std::this_thread::get_id()) {
+            if (state_ == nullptr) {
                 return;
             }
+            if (owner_ == std::thread::id{}) {
+                bindToCurrentThread();
+            }
+            if (owner_ != std::this_thread::get_id()) return;
             auto* slot = state_->queue.tryGetNextToWriteTo();
             if (slot == nullptr) {
                 return;
@@ -111,11 +119,22 @@ class AsyncLogger final {
             state_->queue.updateWriteIndex();
         }
 
+        auto bindToCurrentThread() noexcept -> void {
+            if (state_ == nullptr || owner_ != std::thread::id{}) {
+                return;
+            }
+            owner_ = std::this_thread::get_id();
+            state_->bound.store(true, std::memory_order_release);
+            if (owner_logger_ != nullptr) {
+                owner_logger_->binding_cv_.notify_all();
+            }
+        }
+
       private:
         friend class AsyncLogger;
 
-        explicit ProducerHandle(ProducerState* state)
-                : state_(state), owner_(std::this_thread::get_id()) {}
+        explicit ProducerHandle(ProducerState* state, AsyncLogger* owner_logger)
+                : state_(state), owner_logger_(owner_logger) {}
 
         template <std::size_t N>
         static auto copyText(std::array<char, N>& destination,
@@ -129,6 +148,7 @@ class AsyncLogger final {
 
         ProducerState* state_ = nullptr;
         std::thread::id owner_;
+        AsyncLogger* owner_logger_ = nullptr;
     };
 
     AsyncLogger(std::filesystem::path output_directory,
@@ -160,7 +180,23 @@ class AsyncLogger final {
                 std::move(component), std::move(path), queue_capacity_);
         auto* state_ptr = state.get();
         producers_.push_back(std::move(state));
-        return ProducerHandle(state_ptr);
+        return ProducerHandle(state_ptr, this);
+    }
+
+    auto waitForProducerBindings(std::size_t expected_producers,
+                                 std::chrono::milliseconds timeout) -> void {
+        std::unique_lock lock(mutex_);
+        binding_cv_.wait_for(lock, timeout, [this, expected_producers] {
+            if (producers_.size() != expected_producers) {
+                return false;
+            }
+            for (const auto& producer : producers_) {
+                if (!producer->bound.load(std::memory_order_acquire)) {
+                    return false;
+                }
+            }
+            return true;
+        });
     }
 
     auto start() -> void {
@@ -232,6 +268,7 @@ class AsyncLogger final {
     std::thread worker_;
     std::atomic<bool> running_{false};
     mutable std::mutex mutex_;
+    std::condition_variable binding_cv_;
     bool started_ = false;
     bool stopped_ = false;
 };
