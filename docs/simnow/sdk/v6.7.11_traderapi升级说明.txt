@@ -1,0 +1,37 @@
+版本号：v6.7.11
+后台版本：V6.7.11
+注意：此版本做了交易和行情API的评测与生产版本合并，若不修改默认模式，默认接入的是红区生产版本。请各终端厂商根据自身情况进行开发。
+
+变更说明：
+
+1、交易TraderAPI和行情MdAPI的评测版本与生产版本合并：交易TraderAPI和行情MdAPI，均增加一个bool类型的默认参数blsProductionMode，表示api是否使用生产模式，true 为生产模式（默认值），false为测评模式。
+即：（1）traderapi的接口由  “CreateFtdcTraderApi(const char *pszflowPath="");  ”改为 “CreateFtdcTraderApi(const char*pszflowPath ="",bool blsProductionMode=true);”。（2）mdapi的接口由 “CreateFtdcMdApi(const char *pszFlowPath = "", const bool blsUsingUdp=false, const bool blsMulticast=false);”改为“CreateFtdcMdApi(const char *pszFlowPath = "", const bool blsUsingUdp=false, const bool blsMulticast=false, bool blsProductionMode=true);”  。
+
+2、	查询期货手续费率 ReqQryInstrumentCommissionRate接口优化：
+1）优化当按合约查询时，响应Rsp中的 InstrumentID 字段值为合约代码，返回结果清晰以避免误用；
+2）增加按品种查询的功能，当入参InstrumentID填写品种代码时，返回该品种及该品种下不同于品种设置的单一合约费率设置数据。
+
+3、查询期权手续费率ReqQryOptionInstrCommRate接口优化：
+1）优化当按合约查询时，响应Rsp中的 InstrumentID 字段值为合约代码；
+
+4、查询保证金率 ReqQryInstrumentMarginRate接口优化：
+1）优化当按合约查询时，响应Rsp中的 InstrumentID 字段值为合约代码；
+2）增加按品种查询的功能，当入参InstrumentID填写品种代码时，返回该品种及该品种下不同于品种设置的单一合约费率设置数据。
+
+5、TraderAPI增加 查询用户会话接口 ReqQryUserSession。
+
+6、支持返回投资者在柜台的预留信息，用户登录响应Rsp中增加“预留信息”和“最近登录时间”两个字段，如下：
+	///上次登陆时间
+	TThostFtdcDateTimeType	LastLoginTime;
+	///预留信息
+	TThostFtdcReserveInfoType	ReserveInfo;
+	
+7、当API连front_se_hc前置时，修复断线后收到OnFrontDisconnected会超时的问题。
+
+8、CThostFtdcOffsetSettingField增加字段ApplySrc，影响接口OnRtnOffsetSetting和OnRspQryOffsetSetting。
+当报盘开启查询会服自对冲数据后，如终端厂商未适配新的API，会服有设置某投资者自对冲数据时，终端将无法区分是会服设置的数据还是交易API端设置的数据，撤会服设置的那条数据就会报错: CTP:撤销对冲设置未找到记录。
+
+
+
+
+
