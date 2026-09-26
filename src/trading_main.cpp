@@ -142,14 +142,13 @@ int main(int argc, char** argv) {
         std::signal(SIGINT, onSignal);
         std::signal(SIGTERM, onSignal);
 
+        logger.start();
         std::clog << "Starting Jev worker\n";
         jev_worker.start();
         std::clog << "Starting trade engine\n";
         engine.start();
         std::clog << "Starting " << venue_type << " venue adapter\n";
         venue->start();
-        logger.waitForProducerBindings(simex ? 4 : 5, std::chrono::seconds(5));
-        logger.start();
         std::clog << venue_type << " venue adapter connected\n";
         std::clog << "jev_trading running\n";
 

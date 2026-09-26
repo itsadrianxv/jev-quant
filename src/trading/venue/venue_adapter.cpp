@@ -54,37 +54,46 @@ auto signedRequest(const std::string& method, const std::string& path,
                    const std::vector<std::pair<std::string, std::string>>& params,
                    const BinanceUmFuturesConfig& config,
                    std::int64_t server_time_offset_ms) -> nlohmann::json {
-    std::string query;
-    for (const auto& [key, value] : params) {
-        if (!query.empty()) query += '&';
-        query += key + '=' + value;
+    const auto attempts = method == "GET" ? 2U : 1U;
+    for (unsigned attempt = 0; attempt < attempts; ++attempt) {
+        std::string query;
+        for (const auto& [key, value] : params) {
+            if (!query.empty()) query += '&';
+            query += key + '=' + value;
+        }
+        const auto local_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+        query += "&recvWindow=10000&timestamp=" + std::to_string(
+                BinanceUmFuturesVenueAdapter::adjustedTimestamp(
+                        local_time_ms, server_time_offset_ms));
+        query += "&signature=" + hmacSha256(query, config.secret_key);
+        auto* curl = curl_easy_init();
+        if (curl == nullptr) throw std::runtime_error("curl initialization failed");
+        std::string body;
+        const auto url = std::string("https://demo-fapi.binance.com") + path + "?" + query;
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method.c_str());
+        struct curl_slist* headers = nullptr;
+        headers = curl_slist_append(headers, ("X-MBX-APIKEY: " + config.api_key).c_str());
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeBody);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 5000L);
+        const auto result = curl_easy_perform(curl);
+        long status = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        if (result == CURLE_OPERATION_TIMEDOUT && attempt + 1 < attempts) continue;
+        if (result != CURLE_OK) {
+            throw std::runtime_error("Binance " + path + " request failed: " +
+                                     curl_easy_strerror(result));
+        }
+        if (status < 200 || status >= 300)
+            throw std::runtime_error("Binance REST HTTP " + std::to_string(status) + ": " + body);
+        return nlohmann::json::parse(body);
     }
-    const auto local_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-    query += "&recvWindow=10000&timestamp=" + std::to_string(
-            BinanceUmFuturesVenueAdapter::adjustedTimestamp(
-                    local_time_ms, server_time_offset_ms));
-    query += "&signature=" + hmacSha256(query, config.secret_key);
-    auto* curl = curl_easy_init();
-    if (curl == nullptr) throw std::runtime_error("curl initialization failed");
-    std::string body;
-    const auto url = std::string("https://demo-fapi.binance.com") + path + "?" + query;
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method.c_str());
-    struct curl_slist* headers = nullptr;
-    headers = curl_slist_append(headers, ("X-MBX-APIKEY: " + config.api_key).c_str());
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeBody);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 5000L);
-    const auto result = curl_easy_perform(curl);
-    long status = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
-    if (result != CURLE_OK) throw std::runtime_error(curl_easy_strerror(result));
-    if (status < 200 || status >= 300) throw std::runtime_error("Binance REST HTTP " + std::to_string(status) + ": " + body);
-    return nlohmann::json::parse(body);
+    throw std::logic_error("Binance request attempts exhausted");
 }
 auto fetchServerTimeOffset() -> std::int64_t {
     const auto request_start = std::chrono::system_clock::now();
@@ -383,8 +392,18 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
     if (config_.symbol.empty() || config_.ticker_id == Common::TickerId_INVALID) {
         throw std::runtime_error("Binance adapter configuration is incomplete");
     }
+    const auto reportStartupStage = [this](std::string_view stage) {
+        if (log_handle_) {
+            log_handle_->log(Common::LogLevel::INFO,
+                             "event=startup_stage stage=" + std::string(stage));
+        }
+        std::clog << "Binance startup: " << stage << std::endl;
+    };
+    reportStartupStage("exchange_info");
     validateExchangeInfo(config_.symbol);
+    reportStartupStage("server_time");
     server_time_offset_ms_ = fetchServerTimeOffset();
+    reportStartupStage("account_configuration");
     validateAccountConfiguration(config_, server_time_offset_ms_);
     depth_stream_ = std::make_unique<BinanceWebSocketStream>(
             "/ws/" + lowerSymbol(config_.symbol) + "@depth@100ms",
@@ -402,10 +421,12 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
                 std::clog << "Binance depth stream failed: " << error << std::endl;
                 std::terminate();
             });
+    reportStartupStage("depth_stream");
     depth_stream_->start();
     if (!depth_stream_->waitUntilConnected(std::chrono::seconds(10))) {
         throw std::runtime_error("Binance depth WebSocket did not connect");
     }
+    reportStartupStage("depth_snapshot");
     const auto depth = fetchDepth(config_.symbol);
     {
         std::lock_guard lock(book_mutex_);
@@ -427,6 +448,7 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
         depth_snapshot_ready_ = true;
         publishBook(bids_, asks_, config_.ticker_id, market_data_);
     }
+    reportStartupStage("listen_key");
     listen_key_ = createListenKey(config_);
     user_stream_ = std::make_unique<BinanceWebSocketStream>(
             "/ws/" + listen_key_,
@@ -475,6 +497,7 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
                 running_.store(false, std::memory_order_release);
                 std::terminate();
             });
+    reportStartupStage("user_stream");
     user_stream_->start();
     if (!user_stream_->waitUntilConnected(std::chrono::seconds(10))) {
         throw std::runtime_error("Binance user WebSocket did not connect");
@@ -501,6 +524,7 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
     order_gateway_->start();
     market_data_->start();
     running_.store(true, std::memory_order_release);
+    if (log_handle_) log_handle_->log(Common::LogLevel::INFO, "event=component_ready");
 }
 
 auto BinanceUmFuturesVenueAdapter::stop() -> void {
@@ -595,9 +619,6 @@ auto BinanceUmFuturesVenueAdapter::publishRejected(
 }
 
 }  // namespace Trading
-
-
-
 
 
 

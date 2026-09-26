@@ -126,7 +126,7 @@ void testAsyncLoggerContract() {
     std::filesystem::remove_all(output_dir);
 }
 
-void testAsyncLoggerQueueOverflowAndRegistration() {
+void testAsyncLoggerQueueOverflow() {
     const auto output_dir = std::filesystem::temp_directory_path() /
                                                     "jev_quant_async_logger_overflow_contract";
     std::filesystem::remove_all(output_dir);
@@ -134,14 +134,6 @@ void testAsyncLoggerQueueOverflowAndRegistration() {
     Common::AsyncLogger logger(output_dir, 1, std::chrono::milliseconds(1));
     auto producer = logger.registerProducer("Overflow", "overflow.log");
     logger.start();
-
-    bool threw = false;
-    try {
-        (void)logger.registerProducer("Late", "late.log");
-    } catch (const std::logic_error&) {
-        threw = true;
-    }
-    CHECK(threw);
 
     producer.log(Common::LogLevel::DEBUG, "first");
     producer.log(Common::LogLevel::DEBUG, "dropped");
@@ -152,6 +144,35 @@ void testAsyncLoggerQueueOverflowAndRegistration() {
                                                   std::istreambuf_iterator<char>());
     CHECK(text.find(" first\n") != std::string::npos);
     CHECK(text.find("dropped") == std::string::npos);
+    std::filesystem::remove_all(output_dir);
+}
+
+void testAsyncLoggerLateRegistrationAndStartupVisibility() {
+    const auto output_dir = std::filesystem::temp_directory_path() /
+                                                    "jev_quant_async_logger_startup_contract";
+    std::filesystem::remove_all(output_dir);
+
+    Common::AsyncLogger logger(output_dir, 8, std::chrono::milliseconds(1));
+    logger.start();
+    auto venue = logger.registerProducer("Venue", "venue.log");
+    venue.log(Common::LogLevel::INFO, "event=startup_stage stage=exchange_info");
+
+    const auto venue_path = output_dir / "venue.log";
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (std::filesystem::file_size(venue_path) == 0 &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    CHECK(std::filesystem::file_size(venue_path) > 0);
+
+    auto gateway = logger.registerProducer("OrderGateway", "order-gateway.log");
+    gateway.log(Common::LogLevel::INFO, "event=component_started");
+    logger.stop();
+
+    std::ifstream gateway_file(output_dir / "order-gateway.log");
+    const std::string gateway_text((std::istreambuf_iterator<char>(gateway_file)),
+                                   std::istreambuf_iterator<char>());
+    CHECK(gateway_text.find("event=component_started") != std::string::npos);
     std::filesystem::remove_all(output_dir);
 }
 
@@ -679,7 +700,8 @@ int main() {
     testSimexReadinessAndPositionGuards();
     testQueueContract();
     testAsyncLoggerContract();
-    testAsyncLoggerQueueOverflowAndRegistration();
+    testAsyncLoggerQueueOverflow();
+    testAsyncLoggerLateRegistrationAndStartupVisibility();
     testAsyncLoggerWorkerBinding();
     testQueueSpscConcurrency();
     testMessageContract();
