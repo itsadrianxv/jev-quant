@@ -96,28 +96,33 @@ auto signedRequest(const std::string& method, const std::string& path,
     throw std::logic_error("Binance request attempts exhausted");
 }
 auto fetchServerTimeOffset() -> std::int64_t {
-    const auto request_start = std::chrono::system_clock::now();
-    auto* curl = curl_easy_init();
-    if (curl == nullptr) throw std::runtime_error("curl initialization failed");
-    std::string body;
     const auto url = std::string("https://demo-fapi.binance.com/fapi/v1/time");
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeBody);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 5000L);
-    const auto result = curl_easy_perform(curl);
-    const auto request_end = std::chrono::system_clock::now();
-    long status = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-    curl_easy_cleanup(curl);
-    if (result != CURLE_OK) throw std::runtime_error(std::string("Binance time request failed: ") + curl_easy_strerror(result));
-    if (status != 200) throw std::runtime_error("Binance time returned HTTP " + std::to_string(status));
-    const auto server_time = nlohmann::json::parse(body).at("serverTime").get<std::int64_t>();
-    const auto start_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            request_start.time_since_epoch()).count();
-    const auto end_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-            request_end.time_since_epoch()).count();
-    return server_time - (start_ms + (end_ms - start_ms) / 2);
+    for (unsigned attempt = 0; attempt < 2; ++attempt) {
+        const auto request_start = std::chrono::system_clock::now();
+        auto* curl = curl_easy_init();
+        if (curl == nullptr) throw std::runtime_error("curl initialization failed");
+        std::string body;
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeBody);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 5000L);
+        const auto result = curl_easy_perform(curl);
+        const auto request_end = std::chrono::system_clock::now();
+        long status = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+        curl_easy_cleanup(curl);
+        if (result == CURLE_OPERATION_TIMEDOUT && attempt == 0) continue;
+        if (result != CURLE_OK)
+            throw std::runtime_error(std::string("Binance time request failed: ") + curl_easy_strerror(result));
+        if (status != 200) throw std::runtime_error("Binance time returned HTTP " + std::to_string(status));
+        const auto server_time = nlohmann::json::parse(body).at("serverTime").get<std::int64_t>();
+        const auto start_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                request_start.time_since_epoch()).count();
+        const auto end_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                request_end.time_since_epoch()).count();
+        return server_time - (start_ms + (end_ms - start_ms) / 2);
+    }
+    throw std::logic_error("Binance time attempts exhausted");
 }
 auto createListenKey(const BinanceUmFuturesConfig& config) -> std::string {
     auto* curl = curl_easy_init();
@@ -160,21 +165,25 @@ auto keepListenKey(const BinanceUmFuturesConfig& config, const std::string& key)
         throw std::runtime_error("listenKey keepalive failed");
 }
 auto fetchDepth(const std::string& symbol) -> nlohmann::json {
-    auto* curl = curl_easy_init();
-    if (curl == nullptr) throw std::runtime_error("curl initialization failed");
-    std::string body;
     const auto url = std::string("https://demo-fapi.binance.com/fapi/v1/depth?symbol=") + symbol + "&limit=1000";
-    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeBody);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 5000L);
-    const auto result = curl_easy_perform(curl);
-    long status = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
-    curl_easy_cleanup(curl);
-    if (result != CURLE_OK) throw std::runtime_error(std::string("depth request failed: ") + curl_easy_strerror(result));
-    if (status != 200) throw std::runtime_error("depth returned HTTP " + std::to_string(status));
-    return nlohmann::json::parse(body);
+    for (unsigned attempt = 0; attempt < 2; ++attempt) {
+        auto* curl = curl_easy_init();
+        if (curl == nullptr) throw std::runtime_error("curl initialization failed");
+        std::string body;
+        curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeBody);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 5000L);
+        const auto result = curl_easy_perform(curl);
+        long status = 0;
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
+        curl_easy_cleanup(curl);
+        if (result == CURLE_OPERATION_TIMEDOUT && attempt == 0) continue;
+        if (result != CURLE_OK) throw std::runtime_error(std::string("depth request failed: ") + curl_easy_strerror(result));
+        if (status != 200) throw std::runtime_error("depth returned HTTP " + std::to_string(status));
+        return nlohmann::json::parse(body);
+    }
+    throw std::logic_error("Binance depth attempts exhausted");
 }
 auto publishBook(const std::map<double, double>& bids,
                   const std::map<double, double>& asks,
@@ -619,7 +628,6 @@ auto BinanceUmFuturesVenueAdapter::publishRejected(
 }
 
 }  // namespace Trading
-
 
 
 
