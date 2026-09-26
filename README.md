@@ -24,7 +24,7 @@ sudo apt-get install -y cmake g++ ninja-build libcurl4-openssl-dev nlohmann-json
 Configure and build:
 
 ```bash
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DJEV_ENABLE_SIMEX=OFF
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
@@ -46,6 +46,10 @@ From the repository root, run:
 ```
 
 The process runs in the foreground and shuts down on `Ctrl+C`.
+
+### Simex venue
+
+The optional simex adapter connects to a separate localhost venue process and uses the real OpenRouter Jev provider. It is enabled by default and expects the compatible simex checkout at `../simex`; use `-DJEV_ENABLE_SIMEX=OFF` for a Binance-only build. See [the simex integration guide](docs/simex-venue.md) for building both processes, configuration, live validation, and current limits.
 
 ## Layout
 
