@@ -489,20 +489,21 @@ void testJevHttpRequestContract() {
     const auto body = client.buildRequestBody(state);
     CHECK(body.find("\"model\":\"typesafe/jev-1.13\"") != std::string::npos);
     CHECK(body.find("\"endpoint\"") == std::string::npos);
-    CHECK(body.find("\"instructions\":\"long or short?\"") != std::string::npos);
+    CHECK(body.find("\"instructions\":\"Choose the directional bias better supported by the available information for seeking short-term profit over a 1–5 minute horizon. A directional preference does not by itself justify opening a position.\"") != std::string::npos);
+    CHECK(body.find("\"instructions\":\"Choose the next action to seek short-term profit over an intended holding horizon of 1–5 minutes, within the stated risk limits. Act on modest opportunities supported by the available information; strong evidence is not required. Consider the bid–ask spread when judging whether an opportunity is worth trading. Choose hold when no worthwhile opportunity is apparent. The holding horizon is a planning target, not a mandatory exit deadline.\"") != std::string::npos);
     CHECK(body.find("\"evaluation_id\":9") != std::string::npos);
     CHECK(body.find("\"working_orders\"") != std::string::npos);
     CHECK(body.find("\"order_id\":12") != std::string::npos);
     CHECK(body.find("\"open\":\"open a position\"") != std::string::npos);
     CHECK(body.find("\"hold\":\"take no action\"") != std::string::npos);
-    CHECK(body.find("\"close\":\"reduce the current position\"") ==
+    CHECK(body.find("\"close\":\"Reduce the current position when exiting is preferable to maintaining the exposure for short-term profit, considering the bid–ask spread. Closing at a loss is allowed.\"") ==
                   std::string::npos);
     CHECK(body.find("\"volume\":null") != std::string::npos);
     CHECK(body.find("\"upper_limit_price\":null") != std::string::npos);
 
     state.position_.net_position_ = 2;
     const auto occupied_body = client.buildRequestBody(state);
-    CHECK(occupied_body.find("\"close\":\"reduce the current position\"") !=
+    CHECK(occupied_body.find("\"close\":\"Reduce the current position when exiting is preferable to maintaining the exposure for short-term profit, considering the bid–ask spread. Closing at a loss is allowed.\"") !=
                   std::string::npos);
 }
 

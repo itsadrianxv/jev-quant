@@ -52,7 +52,7 @@ auto JevHttpClient::buildRequestBody(const JevEvaluationState& state) const
     const Json criteria = position.net_position_ == 0
                                                         ? Json{{"open", "open a position"}, {"hold", "take no action"}}
                                                         : Json{{"open", "increase exposure"},
-                                                                      {"close", "reduce the current position"},
+                                                                      {"close", "Reduce the current position when exiting is preferable to maintaining the exposure for short-term profit, considering the bid–ask spread. Closing at a loss is allowed."},
                                                                       {"hold", "take no action"}};
     Json working_orders = Json::array();
     for (const auto& order : state.working_orders_) {
@@ -93,9 +93,9 @@ auto JevHttpClient::buildRequestBody(const JevEvaluationState& state) const
     const Json request = {
             {"model", config_.model_}, {"state", state_json},
             {"questions", {
-                    {"bias", {{"type", "choice"}, {"instructions", "long or short?"},
+                    {"bias", {{"type", "choice"}, {"instructions", "Choose the directional bias better supported by the available information for seeking short-term profit over a 1–5 minute horizon. A directional preference does not by itself justify opening a position."},
                                         {"criteria", {{"long", "long"}, {"short", "short"}}}}},
-                    {"intent", {{"type", "choice"}, {"instructions", "open, close, or hold?"},
+                    {"intent", {{"type", "choice"}, {"instructions", "Choose the next action to seek short-term profit over an intended holding horizon of 1–5 minutes, within the stated risk limits. Act on modest opportunities supported by the available information; strong evidence is not required. Consider the bid–ask spread when judging whether an opportunity is worth trading. Choose hold when no worthwhile opportunity is apparent. The holding horizon is a planning target, not a mandatory exit deadline."},
                                             {"criteria", criteria}}}}}};
     return request.dump();
 }
