@@ -49,6 +49,7 @@ git -C $CloneRoot branch -d $Task
 Assert-LastExit 'git branch -d'
 git -C $CloneRoot push origin --delete $Task
 Assert-LastExit 'git push origin --delete'
-Remove-Item -LiteralPath $WslBuildDir -Recurse -Force
+wsl.exe -d Ubuntu --exec bash -lc 'rm -rf -- /home/wangyuk/build/jev-quant/master'
+Assert-LastExit 'WSL verification build cleanup'
 
 Write-Host "Merge closeout for '$Task' complete."
