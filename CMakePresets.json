@@ -1,0 +1,54 @@
+{
+  "version": 4,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "ci-gcc-debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/Debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "JEV_ENABLE_SIMEX": "OFF"
+      }
+    },
+    {
+      "name": "ci-gcc-release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/Release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "JEV_ENABLE_SIMEX": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "ci-gcc-debug",
+      "configurePreset": "ci-gcc-debug"
+    },
+    {
+      "name": "ci-gcc-release",
+      "configurePreset": "ci-gcc-release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "test-ci-gcc-debug",
+      "configurePreset": "ci-gcc-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "test-ci-gcc-release",
+      "configurePreset": "ci-gcc-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}
