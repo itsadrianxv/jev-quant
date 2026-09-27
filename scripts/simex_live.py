@@ -49,6 +49,10 @@ def run(args):
     output.mkdir(parents=True, exist_ok=False)
     config["runtime"]["run_seconds"] = 0
     config.setdefault("logging", {})["output_directory"] = str(output / "components")
+    if args.capture:
+        # Opt-in transport-boundary diagnostic capture; the binary records the
+        # exact request/response bytes per HTTP attempt under this directory.
+        config.setdefault("jev", {})["capture"] = {"directory": str(output / "captures")}
     run_config = output / "config.json"
     run_config.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
     server_log = output / "simex.log"
@@ -56,10 +60,11 @@ def run(args):
     server = trading = None
     report = {"status": "failed", "output": str(output)}
     exit_code = 1
+    working_dir = Path(args.working_dir).resolve() if args.working_dir else ROOT
     try:
         with server_log.open("wb") as server_stream, trading_log.open("wb") as trading_stream:
             server = subprocess.Popen([str(args.server.resolve()), str(args.server_config.resolve())],
-                                      cwd=ROOT, stdout=server_stream, stderr=subprocess.STDOUT)
+                                      cwd=working_dir, stdout=server_stream, stderr=subprocess.STDOUT)
             deadline = time.monotonic() + READINESS_TIMEOUT
             while True:
                 ready = re.search(r"event=simex_ready ([^\r\n]*)", server_log.read_text(encoding="utf-8", errors="replace"))
@@ -73,7 +78,7 @@ def run(args):
                 if time.monotonic() >= deadline:
                     raise RuntimeError("Simex readiness timeout")
                 time.sleep(0.05)
-            trading = subprocess.Popen([str(args.trading.resolve()), str(run_config)], cwd=ROOT,
+            trading = subprocess.Popen([str(args.trading.resolve()), str(run_config)], cwd=working_dir,
                                        stdout=trading_stream, stderr=subprocess.STDOUT)
             deadline = time.monotonic() + READINESS_TIMEOUT
             market_ready = False
@@ -88,11 +93,17 @@ def run(args):
                 time.sleep(0.05)
             if market_ready:
                 deadline = time.monotonic() + args.duration
+                worker_log = output / "components" / "jev-worker.log"
                 while time.monotonic() < deadline:
                     if trading.poll() is not None:
                         raise RuntimeError(f"Trading process exited with code {trading.returncode}; see jev.log")
                     if server.poll() is not None:
                         raise RuntimeError("Simex exited during live validation; see simex.log")
+                    if args.max_provider_calls and worker_log.exists():
+                        observations = worker_log.read_text(encoding="utf-8", errors="replace").count("event=evaluation_batch_drained")
+                        if observations >= args.max_provider_calls:
+                            report["stop_reason"] = "provider_call_limit"
+                            break
                     time.sleep(0.05)
             stop(trading)
             if trading.returncode != 0:
@@ -133,5 +144,12 @@ if __name__ == "__main__":
     parser.add_argument("--trading", type=Path, default=ROOT / "build/simex-integration/jev_trading")
     parser.add_argument("--config", type=Path, default=ROOT / "config.simex.json")
     parser.add_argument("--duration", type=int, default=60)
+    parser.add_argument("--max-provider-calls", type=int, default=0,
+                        help="Stop the observation after this many drained evaluations (0 = duration only)")
+    parser.add_argument("--capture", action="store_true",
+                        help="Enable opt-in request/response capture under OUTPUT/captures")
+    parser.add_argument("--working-dir", default=None,
+                        help="Working directory for both processes (default: repo root). "
+                             "The trading process reads its .env from this directory.")
     parser.add_argument("--output", type=Path, default=ROOT / ".scratch/simex-venue-adapter" / time.strftime("live-%Y%m%d-%H%M%S"))
     raise SystemExit(run(parser.parse_args()))
