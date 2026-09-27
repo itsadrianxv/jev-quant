@@ -16,12 +16,14 @@ add_library(jev_trading_core STATIC
         src/trading/market_data/market_data_consumer.cpp
         src/trading/order_gw/order_gateway.cpp
         src/trading/strategy/jev_worker.cpp
+        src/trading/strategy/jev_capture.cpp
         src/trading/strategy/jev_http_client.cpp
         src/trading/strategy/jev_config.cpp
         src/trading/strategy/order_manager.cpp
         src/trading/strategy/trade_engine.cpp
         src/trading/venue/venue_adapter.cpp
         src/trading/venue/binance_websocket_stream.cpp
+        src/tools/jev_variant.cpp
 )
 target_link_libraries(jev_trading_core PUBLIC jev_domain)
 target_include_directories(jev_trading_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -107,6 +109,20 @@ endif()
 target_link_libraries(jev_trading_core PUBLIC CURL::libcurl OpenSSL::Crypto OpenSSL::SSL)
 target_link_libraries(jev_trading_core PUBLIC nlohmann_json::nlohmann_json)
 
+# Source revision recorded by the opt-in diagnostic capture.  Build copies may
+# have no .git directory, so an explicit cache override is supported.
+set(JEV_SOURCE_REVISION "" CACHE STRING "Source revision recorded by diagnostic capture")
+if(NOT JEV_SOURCE_REVISION)
+    execute_process(COMMAND git rev-parse --short=12 HEAD
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            OUTPUT_VARIABLE JEV_GIT_REVISION
+            ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(JEV_GIT_REVISION STREQUAL "")
+        set(JEV_SOURCE_REVISION "unknown")
+    endif()
+endif()
+target_compile_definitions(jev_trading_core PRIVATE JEV_SOURCE_REVISION="${JEV_SOURCE_REVISION}")
+
 enable_testing()
 
 add_executable(contract_tests tests/contract_tests.cpp)
@@ -114,6 +130,10 @@ target_link_libraries(contract_tests PRIVATE jev_trading_core)
 target_compile_options(contract_tests PRIVATE -Wall -Wextra -Wpedantic)
 
 add_test(NAME contract_tests COMMAND contract_tests)
+
+add_executable(jev_replay src/tools/jev_replay.cpp)
+target_link_libraries(jev_replay PRIVATE jev_trading_core)
+target_compile_options(jev_replay PRIVATE -Wall -Wextra -Wpedantic)
 
 add_executable(jev_trading src/trading_main.cpp)
 target_link_libraries(jev_trading PRIVATE jev_trading_core)
