@@ -11,6 +11,7 @@ import time
 
 
 ROOT = Path(__file__).resolve().parents[1]
+READINESS_TIMEOUT = 10
 
 
 def stop(process):
@@ -38,11 +39,15 @@ def run(args):
             raise ValueError(f"Client/server {field} mismatch")
     if config["runtime"]["client_id"] != server_config["client_id"]:
         raise ValueError("Client/server participant mismatch")
-    if args.duration + 10 > server_config.get("max_run_seconds", 28800):
-        raise ValueError("Server lifetime must exceed the live run by at least 10 seconds")
+    if server_config.get("phase_override") != "CONTINUOUS":
+        raise ValueError("Live validation requires phase_override=CONTINUOUS")
+    if not server_config.get("participant_simulator", {}).get("enabled", False):
+        raise ValueError("Live validation requires an enabled participant simulator")
+    if args.duration + 3 * READINESS_TIMEOUT > server_config.get("max_run_seconds", 28800):
+        raise ValueError("Server lifetime must cover readiness, the live run, and shutdown")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
-    config["runtime"]["run_seconds"] = args.duration
+    config["runtime"]["run_seconds"] = 0
     config.setdefault("logging", {})["output_directory"] = str(output / "components")
     run_config = output / "config.json"
     run_config.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
@@ -53,29 +58,45 @@ def run(args):
     exit_code = 1
     try:
         with server_log.open("wb") as server_stream, trading_log.open("wb") as trading_stream:
-            # TODO(simex-counterparty): Once scenario startup is defined, decide
-            # how this runner selects a scenario and observes counterparty readiness.
-            # Transport readiness alone must not be treated as available liquidity.
             server = subprocess.Popen([str(args.server.resolve()), str(args.server_config.resolve())],
                                       cwd=ROOT, stdout=server_stream, stderr=subprocess.STDOUT)
-            deadline = time.monotonic() + 10
-            while "event=simex_ready " not in server_log.read_text(encoding="utf-8", errors="replace"):
+            deadline = time.monotonic() + READINESS_TIMEOUT
+            while True:
+                ready = re.search(r"event=simex_ready ([^\r\n]*)", server_log.read_text(encoding="utf-8", errors="replace"))
+                if ready:
+                    if not re.search(r"(?:^| )phase=CONTINUOUS(?: |$)", ready.group(1)) or not re.search(
+                            r"(?:^| )override=1(?: |$)", ready.group(1)):
+                        raise RuntimeError("Simex did not start with the requested continuous phase override")
+                    break
                 if server.poll() is not None:
                     raise RuntimeError("Simex exited before readiness; see simex.log")
                 if time.monotonic() >= deadline:
                     raise RuntimeError("Simex readiness timeout")
                 time.sleep(0.05)
-            # Readiness is signaled through the log, not a probe connection that
-            # would consume the v1 server's single participant connection.
             trading = subprocess.Popen([str(args.trading.resolve()), str(run_config)], cwd=ROOT,
                                        stdout=trading_stream, stderr=subprocess.STDOUT)
-            timeout = args.duration + config.get("jev", {}).get("timeout_ms", 4000) / 1000 + 20
-            try:
-                returncode = trading.wait(timeout=timeout)
-            except subprocess.TimeoutExpired as error:
-                raise RuntimeError("Trading process exceeded its bounded lifetime") from error
-            if returncode != 0:
-                raise RuntimeError(f"Trading process exited with code {returncode}; see jev.log")
+            deadline = time.monotonic() + READINESS_TIMEOUT
+            market_ready = False
+            while time.monotonic() < deadline:
+                if "event=simex_market_state state=ready" in trading_log.read_text(encoding="utf-8", errors="replace"):
+                    market_ready = True
+                    break
+                if trading.poll() is not None:
+                    raise RuntimeError(f"Trading process exited with code {trading.returncode}; see jev.log")
+                if server.poll() is not None:
+                    raise RuntimeError("Simex exited before market readiness; see simex.log")
+                time.sleep(0.05)
+            if market_ready:
+                deadline = time.monotonic() + args.duration
+                while time.monotonic() < deadline:
+                    if trading.poll() is not None:
+                        raise RuntimeError(f"Trading process exited with code {trading.returncode}; see jev.log")
+                    if server.poll() is not None:
+                        raise RuntimeError("Simex exited during live validation; see simex.log")
+                    time.sleep(0.05)
+            stop(trading)
+            if trading.returncode != 0:
+                raise RuntimeError(f"Trading process exited with code {trading.returncode}; see jev.log")
             text = trading_log.read_text(encoding="utf-8", errors="replace")
             result = re.search(r"event=simex_live_result market_ready=(\d+) decisions=(\d+) executions=(\d+) provider_failures=(\d+)", text)
             if not result:
@@ -87,7 +108,7 @@ def run(args):
             # windows for fills, partial fills, and cancel races after liquidity is
             # available. Keep hold-only runs unverified for execution; do not inject
             # orders or override real Jev decisions to satisfy a scenario.
-            if not market:
+            if not market_ready or not market:
                 report["status"], exit_code = "waiting_for_market_data", 2
             elif not decisions:
                 report["status"], exit_code = "decision_chain_unverified", 3

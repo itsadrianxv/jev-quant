@@ -35,7 +35,7 @@ In another terminal:
 
 Both commands respond to SIGINT/SIGTERM. The server supports one connection per process and exits after the participant disconnects. Start a fresh server for another run.
 
-`server.json` selects the instrument profile, reference price, fixed trading day, participant id, TCP port, UDP destination port, snapshot interval, queue capacity, and maximum process lifetime. The profile path is relative to server.json. The server runs REALTIME in the continuous session without scheduled rollover. It starts with no orders or positions and supplies no synthetic liquidity. Market-data and counterparty generation remain the user's separate simex work.
+`server.json` selects the instrument profile, reference price, fixed trading day, participant id, TCP port, UDP destination port, snapshot interval, queue capacity, and maximum process lifetime. The profile path is relative to server.json. The server runs REALTIME and follows its session calendar unless `phase_override` pins it to `CONTINUOUS`. The configured participant simulator starts with an empty book and supplies maker quotes and taker orders during continuous trading.
 
 Match `venue.tcp_port`, `venue.udp_port`, and `runtime.client_id` to the server configuration. The adapter maps the configured local ticker to simex ticker 0. `feed_timeout_ms` must exceed the server snapshot interval; snapshots also establish feed liveness when the book is empty. `runtime.run_seconds=0` keeps normal operation running until interrupted. The server's lifetime bounds the session to at most one day; stop before changing the venue trading day.
 
@@ -45,7 +45,7 @@ Match `venue.tcp_port`, `venue.udp_port`, and `runtime.client_id` to the server 
 python3 scripts/simex_live.py --duration 60
 ```
 
-This explicitly invoked runner starts both real processes, waits for server readiness, saves process and component logs, and cleans up on completion or failure. It never probes TCP readiness by consuming the server's sole connection. Each run writes a separate directory under `.scratch/simex-venue-adapter/`, including `result.json`. Use `--server`, `--server-config`, `--trading`, `--config`, and `--output` to override paths.
+The runner requires `phase_override=CONTINUOUS` and an enabled `participant_simulator` in the supplied server config. It checks that the server reports `phase=CONTINUOUS override=1`, then starts Jev and waits up to 10 seconds for the adapter's first usable two-sided depth. `--duration` measures the observation window from that first ready state. The runner saves process and component logs and cleans up on completion or failure. It never probes TCP readiness by consuming the server's sole connection. Each run writes a separate directory under `.scratch/simex-venue-adapter/`, including `result.json`. Use `--server`, `--server-config`, `--trading`, `--config`, and `--output` to override paths.
 
 Exit codes describe the evidence:
 
