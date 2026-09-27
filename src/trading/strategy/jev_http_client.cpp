@@ -1,5 +1,6 @@
 #include "jev_http_client.h"
 
+#include <chrono>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -38,6 +39,13 @@ auto answer(const Json& answers, const char* key) -> const Json& {
 }
 
 }  // namespace
+
+JevHttpClient::JevHttpClient(JevHttpConfig config)
+        : config_(config), capture_(config.capture_) {
+    if (capture_.enabled() && capture_.runId().empty()) {
+        capture_.setRunId(JevHttpCapture::utcTimestampNow());
+    }
+}
 
 auto JevHttpClient::buildRequestBody(const JevEvaluationState& state) const
         -> std::string {
@@ -172,18 +180,52 @@ auto JevHttpClient::evaluate(const JevEvaluationState& state) -> JevDecision {
         curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, config_.timeout_ms_);
         curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, config_.timeout_ms_);
         curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+        JevCaptureAttemptMeta capture_meta;
+        capture_meta.evaluation_id_ = state.evaluation_id_;
+        capture_meta.ticker_id_ = state.ticker_id_;
+        capture_meta.attempt_ = attempt;
+        capture_meta.endpoint_ = config_.endpoint_;
+        capture_meta.model_ = config_.model_;
+        capture_meta.timeout_ms_ = config_.timeout_ms_;
+        capture_meta.max_retries_ = config_.max_retries_;
+        capture_meta.started_utc_ = JevHttpCapture::utcTimestampNow();
+        const auto capture_context = capture_.beginAttempt(capture_meta, request_body);
+        const auto perform_started = std::chrono::steady_clock::now();
         const auto result = curl_easy_perform(curl);
+        const auto elapsed_ms =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
+                                                                                                    perform_started)
+                        .count();
         long status = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
         curl_slist_free_all(headers);
         curl_easy_cleanup(curl);
+        const auto record_attempt =
+                [&](std::optional<long> captured_status, std::string_view parse_outcome,
+                    std::string_view parse_error) {
+                    capture_.completeAttempt(capture_context, capture_meta, request_body, response,
+                                             static_cast<int>(result), curl_easy_strerror(result),
+                                             captured_status, elapsed_ms, parse_outcome,
+                                             parse_error);
+                };
         if (result != CURLE_OK) {
+            record_attempt(std::nullopt, "", "");
             if (attempt < config_.max_retries_) continue;
             throw std::runtime_error(curl_easy_strerror(result));
         }
-        if (status < 200 || status >= 300)
+        if (status < 200 || status >= 300) {
+            record_attempt(status, "", "");
+            if (attempt < config_.max_retries_) continue;
             throw std::runtime_error("Jev HTTP status: " + std::to_string(status));
-        return parseDecision(response, state);
+        }
+        try {
+            auto decision = parseDecision(response, state);
+            record_attempt(status, "ok", "");
+            return decision;
+        } catch (const std::exception& error) {
+            record_attempt(status, "failed", error.what());
+            throw;
+        }
     }
     throw std::runtime_error("Jev request failed");
 }

@@ -4,6 +4,7 @@
 #include <string>
 #include <utility>
 
+#include "jev_capture.h"
 #include "jev_worker.h"
 
 namespace Trading {
@@ -16,12 +17,13 @@ struct JevHttpConfig {
     unsigned max_retries_ = 0;
     std::string http_referer_;
     std::string http_title_;
+    JevCaptureConfig capture_;
 };
 
 /// C++ HTTP DecisionProvider for Jev through OpenRouter's Decisions API.
 class JevHttpClient final : public JevDecisionProvider {
   public:
-    explicit JevHttpClient(JevHttpConfig config) : config_(std::move(config)) {}
+    explicit JevHttpClient(JevHttpConfig config);
 
     auto evaluate(const JevEvaluationState& state) -> JevDecision override;
 
@@ -33,6 +35,7 @@ class JevHttpClient final : public JevDecisionProvider {
 
   private:
     JevHttpConfig config_;
+    JevHttpCapture capture_;
 };
 
 }  // namespace Trading

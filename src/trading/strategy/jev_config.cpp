@@ -63,6 +63,14 @@ auto loadJevHttpConfig(const std::string& dotenv_path,
     if (settings.contains("max_retries")) config.max_retries_ = settings.at("max_retries").get<unsigned>();
     if (settings.contains("http_referer")) config.http_referer_ = settings.at("http_referer").get<std::string>();
     if (settings.contains("http_title")) config.http_title_ = settings.at("http_title").get<std::string>();
+    if (settings.contains("capture")) {
+        const auto& capture = settings.at("capture");
+        if (!capture.is_object()) throw std::runtime_error("config.jev.capture must be an object");
+        if (capture.contains("directory"))
+            config.capture_.directory_ = capture.at("directory").get<std::string>();
+        if (capture.contains("run_id"))
+            config.capture_.run_id_ = capture.at("run_id").get<std::string>();
+    }
     if (config.endpoint_.empty() || config.model_.empty() || config.timeout_ms_ <= 0) {
         throw std::runtime_error("Invalid Jev HTTP configuration");
     }
