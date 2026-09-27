@@ -8,11 +8,14 @@
 #include <filesystem>
 #include <fstream>
 
+#include <nlohmann/json.hpp>
+
 #include "common/async_logger.h"
 #include "common/lf_queue.h"
 #include "exchange/market_data/market_update.h"
 #include "exchange/order_server/client_request.h"
 #include "exchange/order_server/client_response.h"
+#include "trading/strategy/jev_capture.h"
 #include "trading/strategy/jev_decision.h"
 #include "trading/strategy/jev_http_client.h"
 #include "trading/strategy/jev_worker.h"
@@ -21,6 +24,7 @@
 #include "trading/strategy/trade_engine.h"
 #include "trading/market_data/market_data_consumer.h"
 #include "trading/order_gw/order_gateway.h"
+#include "tools/jev_variant.h"
 #include "simulated_venue.h"
 #include "trading/venue/venue_adapter.h"
 namespace {
@@ -627,6 +631,157 @@ void testYesterdayFirstPositionClose() {
     CHECK(position.realized_pnl_ == 4.0);
 }
 
+void testJevCaptureDisabledByDefault() {
+    Trading::JevHttpCapture capture;
+    CHECK(!capture.enabled());
+    Trading::JevCaptureAttemptMeta meta;
+    const auto context = capture.beginAttempt(meta, "{}");
+    CHECK(!context.has_value());
+    capture.completeAttempt(context, meta, "{}", "{}", 0, "OK", 200, 0.0, "ok", "");
+}
+
+void testJevCaptureAttemptFilesContract() {
+    const auto output_dir = std::filesystem::temp_directory_path() /
+                                                    "jev_quant_capture_files_contract";
+    std::filesystem::remove_all(output_dir);
+    Trading::JevHttpCapture capture(Trading::JevCaptureConfig{output_dir.string(), "run-A"});
+    CHECK(capture.enabled());
+    CHECK(capture.runId() == "run-A");
+
+    Trading::JevCaptureAttemptMeta meta;
+    meta.evaluation_id_ = 12;
+    meta.ticker_id_ = 0;
+    meta.attempt_ = 0;
+    meta.endpoint_ = "https://openrouter.ai/api/alpha/decisions";
+    meta.model_ = "typesafe/jev-1.13";
+    meta.timeout_ms_ = 4000;
+    meta.max_retries_ = 0;
+    meta.started_utc_ = Trading::JevHttpCapture::utcTimestampNow();
+    const auto context = capture.beginAttempt(meta, "abc");
+    CHECK(context.has_value());
+    capture.completeAttempt(context, meta, "abc", "response-bytes", 0, "OK", 200, 5.5, "ok", "");
+
+    std::ifstream request_file(context->directory_ / "request.json", std::ios::binary);
+    std::string request_bytes((std::istreambuf_iterator<char>(request_file)),
+                                                        std::istreambuf_iterator<char>());
+    CHECK(request_bytes == "abc");
+    // SHA-256 test vector for the literal string "abc".
+    CHECK(Trading::JevHttpCapture::sha256Hex("abc") ==
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    std::ifstream metadata_file(context->directory_ / "metadata.json");
+    nlohmann::json metadata;
+    metadata_file >> metadata;
+    CHECK(metadata.at("run_id") == "run-A");
+    CHECK(metadata.at("evaluation_id") == 12);
+    CHECK(metadata.at("request_sha256") ==
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    CHECK(metadata.at("response_sha256") ==
+                Trading::JevHttpCapture::sha256Hex("response-bytes"));
+    CHECK(metadata.at("http_status") == 200);
+    CHECK(metadata.at("parse_outcome") == "ok");
+    CHECK(metadata.at("elapsed_ms") == 5.5);
+    CHECK(metadata.contains("source_revision"));
+    CHECK(metadata.contains("binary_sha256"));
+    CHECK(metadata.contains("started_utc"));
+    CHECK(metadata.at("role") == "live");
+    CHECK(metadata.at("variant") == "");
+    std::ifstream response_file(context->directory_ / "response.raw", std::ios::binary);
+    std::string response_bytes((std::istreambuf_iterator<char>(response_file)),
+                                                         std::istreambuf_iterator<char>());
+    CHECK(response_bytes == "response-bytes");
+    std::filesystem::remove_all(output_dir);
+}
+
+void testJevCaptureEvaluateFailurePath() {
+    const auto output_dir = std::filesystem::temp_directory_path() /
+                                                    "jev_quant_capture_failure_contract";
+    std::filesystem::remove_all(output_dir);
+    Trading::JevHttpConfig config;
+    config.endpoint_ = "http://127.0.0.1:9/";
+    config.api_key_ = "test-capture-only-key";
+    config.timeout_ms_ = 300;
+    config.capture_ = Trading::JevCaptureConfig{output_dir.string(), "run-B"};
+    Trading::JevHttpClient client(config);
+    Trading::JevEvaluationState state;
+    state.evaluation_id_ = 7;
+    state.ticker_id_ = 0;
+    state.position_.net_position_ = 0;
+    state.depth_snapshot_.bids_[0] = {99, 2};
+    state.depth_snapshot_.asks_[0] = {101, 3};
+    const auto expected_body = client.buildRequestBody(state);
+    bool threw = false;
+    try {
+        (void)client.evaluate(state);
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    CHECK(threw);
+    const auto run_dir = output_dir / "run-B";
+    CHECK(std::filesystem::exists(run_dir));
+    bool found_attempt = false;
+    for (const auto& entry : std::filesystem::directory_iterator(run_dir)) {
+        found_attempt = true;
+        std::ifstream request_file(entry.path() / "request.json", std::ios::binary);
+        std::string request_bytes((std::istreambuf_iterator<char>(request_file)),
+                                                            std::istreambuf_iterator<char>());
+        CHECK(request_bytes == expected_body);
+        std::ifstream metadata_file(entry.path() / "metadata.json");
+        nlohmann::json metadata;
+        metadata_file >> metadata;
+        CHECK(metadata.at("evaluation_id") == 7);
+        CHECK(metadata.at("curl_outcome") != "OK");
+        CHECK(metadata.at("parse_outcome").is_null());
+        std::ifstream response_file(entry.path() / "response.raw", std::ios::binary);
+        std::string response_bytes((std::istreambuf_iterator<char>(response_file)),
+                                                             std::istreambuf_iterator<char>());
+        std::ifstream metadata_stream(entry.path() / "metadata.json", std::ios::binary);
+        std::string metadata_bytes((std::istreambuf_iterator<char>(metadata_stream)),
+                                                             std::istreambuf_iterator<char>());
+        const auto combined = request_bytes + response_bytes + metadata_bytes;
+        CHECK(combined.find("test-capture-only-key") == std::string::npos);
+    }
+    CHECK(found_attempt);
+    std::filesystem::remove_all(output_dir);
+}
+
+void testJevPreviousWordingVariantContract() {
+    Trading::JevHttpClient client(Trading::JevHttpConfig{});
+    Trading::JevEvaluationState state;
+    state.evaluation_id_ = 9;
+    state.ticker_id_ = 0;
+    state.position_.net_position_ = 0;
+    state.depth_snapshot_.last_price_ = 3500;
+    state.depth_snapshot_.bids_[0] = {3499, 2};
+    state.depth_snapshot_.asks_[0] = {3501, 2};
+    const auto flat_request = nlohmann::json::parse(client.buildRequestBody(state));
+    const auto flat_variant = Trading::Tools::buildPreviousWordingVariant(flat_request);
+    CHECK(flat_variant.at("state") == flat_request.at("state"));
+    const auto flat_diff = Trading::Tools::describeWordingDiff(flat_request, flat_variant);
+    CHECK(flat_diff.size() == 2);
+    CHECK(flat_diff[0].at("pointer") == "/questions/bias/instructions");
+    CHECK(flat_diff[0].at("to") == "long or short?");
+    CHECK(flat_diff[1].at("pointer") == "/questions/intent/instructions");
+    CHECK(flat_diff[1].at("to") == "open, close, or hold?");
+    CHECK(flat_variant.at("questions").at("intent").at("criteria") ==
+                flat_request.at("questions").at("intent").at("criteria"));
+
+    state.position_.net_position_ = 2;
+    const auto occupied_request = nlohmann::json::parse(client.buildRequestBody(state));
+    const auto occupied_variant = Trading::Tools::buildPreviousWordingVariant(occupied_request);
+    CHECK(occupied_variant.at("state") == occupied_request.at("state"));
+    const auto occupied_diff =
+            Trading::Tools::describeWordingDiff(occupied_request, occupied_variant);
+    CHECK(occupied_diff.size() == 3);
+    bool close_pointer_found = false;
+    for (const auto& entry : occupied_diff) {
+        if (entry.at("pointer") == "/questions/intent/criteria/close") {
+            close_pointer_found = true;
+            CHECK(entry.at("to") == "reduce the current position");
+        }
+    }
+    CHECK(close_pointer_found);
+}
+
 }  // namespace
 
 void testSimexReadinessAndPositionGuards() {
@@ -715,6 +870,10 @@ int main() {
     testJevWorkerAndEvaluationExpiry();
     testJevHttpRequestContract();
     testJevHttpFlatPositionResponse();
+    testJevCaptureDisabledByDefault();
+    testJevCaptureAttemptFilesContract();
+    testJevCaptureEvaluateFailurePath();
+    testJevPreviousWordingVariantContract();
     testJevFailureAndLatestState();
     testJevEvaluationSchedulingAndOrderMapping();
     testBinanceAdapterMapping();
