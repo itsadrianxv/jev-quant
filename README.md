@@ -1,6 +1,8 @@
 # jev-quant
 
-jev-quant is a C++ trading system leveraging Jev, a TypeSafe model good at making instant decisions, a trait that makes it especially good at live trading.
+jev-quant is a C++ trading system leveraging Jev, a TypeSafe model good at making instant decisions, a trait that makes it especially good at live trading. 
+
+Now supporting simulated SHFE futures trading through SimNow and the official CTP SDK. See [the SimNow operations guide](docs/simnow/adapter-operations.md).
 
 ## Quick Start
 
