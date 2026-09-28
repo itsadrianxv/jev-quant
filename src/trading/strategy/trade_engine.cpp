@@ -189,6 +189,7 @@ auto TradeEngine::handleMarketUpdate(const Exchange::MarketUpdate& update,
 }
 
 auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
+    if (single_order_venue_ && !venue_ready_.load()) return;
     if (decision.ticker_id_ >= latest_evaluation_ids_.size() ||
             decision.evaluation_id_ == 0 ||
             decision.evaluation_id_ !=
@@ -203,6 +204,15 @@ auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
     }
 
     if (simex_constraints_ && !instrument_ready_.at(decision.ticker_id_)) return;
+
+    if (single_order_venue_) {
+        for (const auto side : {Common::Side::BUY, Common::Side::SELL}) {
+            const auto state = order_manager_.getOrder(decision.ticker_id_, side).order_state_;
+            if (state != OMOrderState::INVALID && state != OMOrderState::DEAD) return;
+        }
+        if (decision.intent_ == JevIntent::OPEN &&
+            position_keeper_.getPositionInfo(decision.ticker_id_).position_ != 0) return;
+    }
 
     const auto& book = *ticker_order_books_.at(decision.ticker_id_);
     const auto* bbo = book.getBBO();
@@ -271,6 +281,7 @@ auto TradeEngine::attachJevEvaluationQueue(
 }
 
 auto TradeEngine::scheduleJevEvaluation() -> bool {
+    if (single_order_venue_ && !venue_ready_.load()) return false;
     if (outgoing_jev_evaluations_ == nullptr ||
             !instrument_ready_.at(jev_ticker_id_) ||
             std::chrono::steady_clock::now() < next_jev_evaluation_at_) {
@@ -306,6 +317,15 @@ auto TradeEngine::buildJevEvaluationState(
     }
 
     JevEvaluationState state;
+    double pnl_factor = 1.0;
+    state.account_ = account_state_;
+    if (single_order_venue_) {
+        std::lock_guard lock(venue_mutex_);
+        state.price_scale_ = 100000000.0;
+        state.pnl_before_fees_ = true;
+        state.account_ = venue_account_;
+        pnl_factor = venue_multiplier_ / state.price_scale_;
+    }
     state.evaluation_id_ = evaluation_id;
     state.ticker_id_ = ticker_id;
     state.depth_snapshot_ = *ticker_order_books_.at(ticker_id)->getDepthSnapshot();
@@ -315,8 +335,8 @@ auto TradeEngine::buildJevEvaluationState(
     state.position_.today_qty_ = position.todayQty();
     state.position_.yesterday_qty_ = position.yesterdayQty();
     state.position_.average_entry_price_ = position.averageEntryPrice();
-    state.position_.realized_pnl_ = position.realized_pnl_;
-    state.position_.unrealized_pnl_ = position.unrealized_pnl_;
+    state.position_.realized_pnl_ = position.realized_pnl_ * pnl_factor;
+    state.position_.unrealized_pnl_ = position.unrealized_pnl_ * pnl_factor;
 
     const auto& bid_order =
             order_manager_.getOrder(ticker_id, Common::Side::BUY);
@@ -329,7 +349,6 @@ auto TradeEngine::buildJevEvaluationState(
     };
     state.working_orders_ = {toWorkingOrder(bid_order),
                                                       toWorkingOrder(ask_order)};
-    state.account_ = account_state_;
     const auto& limits = risk_manager_.limits();
     state.risk_ = RiskState{limits.max_order_size_, limits.max_position_,
                                                     limits.max_loss_};

@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <thread>
 #include <optional>
+#include <mutex>
 
 #include "common/async_logger.h"
 #include "common/lf_queue.h"
@@ -82,8 +83,22 @@ class TradeEngine final {
     // Configure before starting the engine. Applies to the simex integration.
     auto enableSimexConstraints() noexcept -> void { simex_constraints_ = true; }
 
+    // Configure before start; mailbox updates are safe from the venue thread.
+    void enableSingleOrderVenue() noexcept { single_order_venue_ = true; simex_constraints_ = true; venue_ready_ = false; }
+    void updateVenueState(bool ready, AccountState account, double multiplier) {
+        std::lock_guard lock(venue_mutex_);
+        venue_account_ = account;
+        venue_multiplier_ = multiplier;
+        venue_ready_.store(ready);
+        if (!ready) for (auto& id : latest_evaluation_ids_) id.store(0);
+    }
+    void disableVenueTrading() noexcept {
+        venue_ready_.store(false);
+        for (auto& id : latest_evaluation_ids_) id.store(0);
+    }
+
     [[nodiscard]] auto acceptsEvaluation(const JevEvaluationState& state) const noexcept -> bool {
-        return state.ticker_id_ < latest_evaluation_ids_.size() && state.evaluation_id_ != 0 &&
+        return (!single_order_venue_ || venue_ready_.load()) && state.ticker_id_ < latest_evaluation_ids_.size() && state.evaluation_id_ != 0 &&
                latest_evaluation_ids_[state.ticker_id_].load(std::memory_order_acquire) == state.evaluation_id_;
     }
 
@@ -162,6 +177,11 @@ class TradeEngine final {
     std::optional<Common::AsyncLogger::ProducerHandle> log_handle_;
     bool verbose_market_data_ = false;
     bool simex_constraints_ = false;
+    bool single_order_venue_ = false;
+    std::atomic<bool> venue_ready_{true};
+    mutable std::mutex venue_mutex_;
+    AccountState venue_account_{};
+    double venue_multiplier_ = 1.0;
 };
 
 }  // namespace Trading

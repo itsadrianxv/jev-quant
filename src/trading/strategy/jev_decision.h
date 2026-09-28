@@ -42,6 +42,8 @@ struct RiskState {
 };
 
 struct JevEvaluationState {
+    double price_scale_ = 1.0;
+    bool pnl_before_fees_ = false;
     std::uint64_t evaluation_id_ = 0;
     Common::TickerId ticker_id_ = Common::TickerId_INVALID;
     Exchange::DepthSnapshot depth_snapshot_{};

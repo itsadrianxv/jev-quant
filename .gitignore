@@ -12,3 +12,5 @@ build*
 .worktrees/
 .scratch/
 logs
+/flows/
+/config.simnow.local.json

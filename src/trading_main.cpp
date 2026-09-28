@@ -21,6 +21,9 @@
 #include "trading/strategy/jev_worker.h"
 #include "trading/strategy/trade_engine.h"
 #include "trading/venue/venue_adapter.h"
+#ifdef JEV_ENABLE_SIMNOW
+#include "trading/venue/simnow_venue_adapter.h"
+#endif
 #ifdef JEV_ENABLE_SIMEX
 #include "trading/venue/simex_venue_adapter.h"
 #endif
@@ -62,6 +65,7 @@ int main(int argc, char** argv) {
         const auto venue_json = document.value("venue", nlohmann::json::object());
         const auto venue_type = venue_json.value("type", std::string("binance"));
         const bool simex = venue_type == "simex";
+        const bool simnow = venue_type == "simnow";
         const auto run_seconds = runtime.value("run_seconds", 0);
 
         if (ticker_id >= Common::ME_MAX_TICKERS || queue_capacity == 0 ||
@@ -84,6 +88,9 @@ int main(int argc, char** argv) {
                 risk_json.value("max_order_size", Common::Qty_INVALID),
                 risk_json.value("max_position", Common::Qty_INVALID),
                 risk_json.value("max_loss", 0.0)};
+        if (simnow && (order_qty != 1 || limits.max_order_size_ != 1 ||
+                       limits.max_position_ != 1 || limits.max_loss_ != 0 || interval_ms == 0))
+            throw std::runtime_error("SimNow v1 requires one-contract limits, no monetary stop, and a positive evaluation interval");
         std::atomic<std::uint64_t> valid_decisions{0}, executions{0};
         std::atomic<bool> market_ready{false};
         Trading::TradeEngine engine(client_id, limits, &client_requests,
@@ -91,7 +98,8 @@ int main(int argc, char** argv) {
                                                                 &logger);
         engine.setDecisionOrderQuantity(order_qty);
         engine.setVerboseMarketData(verbose_market_data);
-        if (simex) {
+        if (simnow) engine.enableSingleOrderVenue();
+        if (simex || simnow) {
             engine.enableSimexConstraints();
             const auto unknown = std::numeric_limits<double>::quiet_NaN();
             engine.setAccountState({unknown, unknown, unknown});
@@ -126,6 +134,16 @@ int main(int argc, char** argv) {
         if (venue_type == "binance") {
             auto config = Trading::BinanceUmFuturesVenueAdapter::loadConfigFromEnv(".env", ticker_id);
             venue = std::make_unique<Trading::BinanceUmFuturesVenueAdapter>(&market_data, &order_gateway, std::move(config), &logger);
+        } else if (simnow) {
+#ifdef JEV_ENABLE_SIMNOW
+            venue = std::make_unique<Trading::SimNowVenueAdapter>(&market_data, &order_gateway,
+                Trading::SimNowConfig::fromJson(venue_json, ticker_id),
+                [&](bool ready, Trading::AccountState account, double multiplier) {
+                    engine.updateVenueState(ready, account, multiplier);
+                });
+#else
+            throw std::runtime_error("SimNow support was disabled at build time");
+#endif
         } else if (simex) {
 #ifdef JEV_ENABLE_SIMEX
             venue = std::make_unique<Trading::SimexVenueAdapter>(&market_data, &order_gateway,
@@ -137,7 +155,7 @@ int main(int argc, char** argv) {
         auto jev_config = Trading::loadJevHttpConfig(".env", config_path);
         Trading::JevHttpClient jev_client(std::move(jev_config));
         Trading::JevWorker jev_worker(&evaluations, &decisions, &jev_client, &logger);
-        if (simex) jev_worker.setEvaluationFilter([&](const auto& state) { return engine.acceptsEvaluation(state); });
+        if (simex || simnow) jev_worker.setEvaluationFilter([&](const auto& state) { return engine.acceptsEvaluation(state); });
 
         std::signal(SIGINT, onSignal);
         std::signal(SIGTERM, onSignal);
@@ -154,17 +172,22 @@ int main(int argc, char** argv) {
 
         const auto started_at = std::chrono::steady_clock::now();
         while (!stopping.load(std::memory_order_acquire) &&
+               venue->running() &&
                (run_seconds == 0 || std::chrono::steady_clock::now() - started_at < std::chrono::seconds(run_seconds))) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
         std::clog << "Stopping " << venue_type << " venue adapter\n";
+        if (simnow) engine.disableVenueTrading();
         venue->stop();
         std::clog << "Stopping trade engine\n";
         engine.stop();
         std::clog << "Stopping Jev worker\n";
         jev_worker.stop();
         logger.stop();
+#ifdef JEV_ENABLE_SIMNOW
+        if (simnow && static_cast<Trading::SimNowVenueAdapter*>(venue.get())->failed()) return 1;
+#endif
         if (simex) {
             std::clog << "event=simex_live_result market_ready=" << market_ready.load()
                       << " decisions=" << valid_decisions.load() << " executions=" << executions.load()

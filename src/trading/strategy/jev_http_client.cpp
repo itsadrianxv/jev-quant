@@ -51,8 +51,9 @@ auto JevHttpClient::buildRequestBody(const JevEvaluationState& state) const
         -> std::string {
     const auto& position = state.position_;
     const auto& depth = state.depth_snapshot_;
-    const auto priceValue = [](Common::Price value) -> Json {
-        return value == Common::Price_INVALID ? Json(nullptr) : Json(value);
+    const auto priceValue = [&](Common::Price value) -> Json {
+        if (value == Common::Price_INVALID) return Json(nullptr);
+        return state.price_scale_ == 1.0 ? Json(value) : Json(static_cast<double>(value) / state.price_scale_);
     };
     const auto qtyValue = [](Common::Qty value) -> Json {
         return value == Common::Qty_INVALID ? Json(nullptr) : Json(value);
@@ -75,12 +76,12 @@ auto JevHttpClient::buildRequestBody(const JevEvaluationState& state) const
     Json bids = Json::array();
     for (const auto& level : depth.bids_)
         if (level.price_ != Common::Price_INVALID && level.qty_ != Common::Qty_INVALID && level.qty_ > 0)
-            bids.push_back({{"price", level.price_}, {"qty", level.qty_}});
+            bids.push_back({{"price", priceValue(level.price_)}, {"qty", level.qty_}});
     Json asks = Json::array();
     for (const auto& level : depth.asks_)
         if (level.price_ != Common::Price_INVALID && level.qty_ != Common::Qty_INVALID && level.qty_ > 0)
-            asks.push_back({{"price", level.price_}, {"qty", level.qty_}});
-    const Json state_json = {
+            asks.push_back({{"price", priceValue(level.price_)}, {"qty", level.qty_}});
+    Json state_json = {
             {"evaluation_id", state.evaluation_id_}, {"ticker_id", state.ticker_id_},
             {"position", {{"net", position.net_position_}, {"today", position.today_qty_},
                                           {"yesterday", position.yesterday_qty_},
@@ -98,6 +99,9 @@ auto JevHttpClient::buildRequestBody(const JevEvaluationState& state) const
             {"risk", {{"max_order_size", state.risk_.max_order_size_},
                                   {"max_position", state.risk_.max_position_},
                                   {"max_loss", state.risk_.max_loss_}}}};
+    if (state.pnl_before_fees_) {
+        state_json["position"]["pnl_basis"] = "CNY, before fees, measured from this process's entry prices";
+    }
     const Json request = {
             {"model", config_.model_}, {"state", state_json},
             {"questions", {
