@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -33,10 +34,38 @@ template<std::size_t N> void put(char (&out)[N], const std::string& value) {
     if (value.size() >= N) throw std::invalid_argument("CTP field exceeds SDK width");
     std::memcpy(out,value.c_str(),value.size()+1);
 }
-std::string env(const char* name) {
+std::string trim(const std::string& value) {
+    const auto first=value.find_first_not_of(" \t\r\n");
+    if(first==std::string::npos) return {};
+    return value.substr(first,value.find_last_not_of(" \t\r\n")-first+1);
+}
+std::string credential(const char* name,const std::string& path) {
     const auto* value=std::getenv(name);
-    if(!value || !*value) throw std::runtime_error(std::string("Missing environment variable: ")+name);
-    return value;
+    if(value && *value) return value;
+    std::ifstream file(path);
+    std::string line;
+    while(std::getline(file,line)) {
+        if(line.starts_with("\xEF\xBB\xBF")) line.erase(0,3);
+        line=trim(line);
+        if(line.empty() || line.front()=='#') continue;
+        if(line.starts_with("export ")) line=trim(line.substr(7));
+        const auto equals=line.find('=');
+        if(equals==std::string::npos || trim(line.substr(0,equals))!=name) continue;
+        auto result=trim(line.substr(equals+1));
+        if(!result.empty() && (result.front()=='\'' || result.front()=='"')) {
+            const auto end=result.find(result.front(),1);
+            if(end==std::string::npos ||
+               (!trim(result.substr(end+1)).empty() && trim(result.substr(end+1)).front()!='#'))
+                throw std::runtime_error(std::string("Invalid dotenv value for ")+name);
+            result=result.substr(1,end-1);
+        } else {
+            const auto comment=result.find(" #");
+            if(comment!=std::string::npos) result=trim(result.substr(0,comment));
+        }
+        if(!result.empty()) return result;
+        break;
+    }
+    throw std::runtime_error(std::string("Missing credential in environment or dotenv: ")+name);
 }
 bool terminal(char status) {
     return status==THOST_FTDC_OST_AllTraded || status==THOST_FTDC_OST_Canceled ||
@@ -52,12 +81,14 @@ Common::Price price(double value) {
 double decimal(Common::Price value) { return static_cast<double>(value)/100000000.0; }
 }
 
-SimNowConfig SimNowConfig::fromJson(const nlohmann::json& j,Common::TickerId ticker) {
+SimNowConfig SimNowConfig::fromJson(const nlohmann::json& j,Common::TickerId ticker,
+                                  const std::string& dotenv_path) {
     SimNowConfig c;
     c.trading_front=j.at("trading_front").get<std::string>();
     c.market_front=j.at("market_front").get<std::string>();
     c.instrument=j.at("instrument").get<std::string>();
-    c.user=env("SIMNOW_USER_ID"); c.password=env("SIMNOW_PASSWORD");
+    c.user=credential("SIMNOW_USER_ID",dotenv_path);
+    c.password=credential("SIMNOW_PASSWORD",dotenv_path);
     c.auth_code="0000000000000000";
     c.ticker_id=ticker;
     c.flow_directory=j.value("flow_directory",std::string("flows/simnow"));
@@ -306,7 +337,13 @@ struct SimNowVenueAdapter::Impl {
         }
         if(e.kind==Kind::Subscription) { subscribed=e.last; return; }
         if(e.kind==Kind::Auth || e.kind==Kind::Login || e.kind==Kind::MarketLogin || e.kind==Kind::Settlement) {
-            const auto found=requests.find(e.request_id);
+            auto found=requests.find(e.request_id);
+            // SimNow's MD front returns zero instead of echoing the login request ID.
+            // There is only one pending MD login; duplicates after completion stay ignored.
+            if(e.kind==Kind::MarketLogin && e.request_id==0)
+                found=std::find_if(requests.begin(),requests.end(),[](const auto& entry){
+                    return entry.second==Kind::MarketLogin;
+                });
             if(found==requests.end() || found->second!=e.kind || !e.last) return;
             requests.erase(found);
             if(e.kind==Kind::Auth) request(Kind::Login);

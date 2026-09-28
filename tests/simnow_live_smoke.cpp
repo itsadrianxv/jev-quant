@@ -11,10 +11,10 @@ std::atomic<bool> interrupted{false};
 extern "C" void signalHandler(int) { interrupted=true; }
 }
 
-// Deliberately not registered with ctest: this executable places SimNow orders.
+// Deliberately not registered with ctest: this executable connects to SimNow.
 int main(int argc,char** argv) {
-    if(argc!=3 || std::string(argv[1])!="--place-orders") {
-        std::cerr<<"Usage: simnow_live_smoke --place-orders <config.json>\n";
+    if(argc!=3 || (std::string(argv[1])!="--place-orders" && std::string(argv[1])!="--check-startup")) {
+        std::cerr<<"Usage: simnow_live_smoke <--check-startup|--place-orders> <config.json>\n";
         return 2;
     }
     try {
@@ -30,6 +30,13 @@ int main(int argc,char** argv) {
         SimNowVenueAdapter adapter(&market,&gateway,config,[&](bool r,AccountState,double){ready=r;});
         std::signal(SIGINT,signalHandler); std::signal(SIGTERM,signalHandler);
         adapter.start();
+        if(std::string(argv[1])=="--check-startup") {
+            const bool startup_ready=ready.load();
+            adapter.stop();
+            std::cout<<"event=simnow_startup_result ready="<<startup_ready
+                     <<" orders_submitted=0 position="<<adapter.position()<<" failed="<<adapter.failed()<<'\n';
+            return startup_ready && adapter.position()==0 && !adapter.failed() ? 0 : 1;
+        }
         Exchange::DepthSnapshot depth;
         const auto started=std::chrono::steady_clock::now();
         int phase=0;

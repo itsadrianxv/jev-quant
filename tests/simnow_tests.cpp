@@ -2,6 +2,9 @@
 #include "trading/strategy/trade_engine.h"
 #include "trading/strategy/jev_http_client.h"
 #include <cstring>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <mutex>
 #include <stdexcept>
@@ -11,6 +14,50 @@ using namespace Trading;
 using namespace std::chrono_literals;
 using Kind=Trading::Ctp::Kind;
 #define CHECK(x) do { if(!(x)) throw std::runtime_error("Check failed: " #x); } while(false)
+
+void credentialChecks() {
+    struct Environment {
+        std::string key, saved;
+        bool present;
+        explicit Environment(const char* name):key(name),present(std::getenv(name)!=nullptr) {
+            if(present) saved=std::getenv(name);
+            unsetenv(name);
+        }
+        ~Environment() { if(present) setenv(key.c_str(),saved.c_str(),1); else unsetenv(key.c_str()); }
+    } user("SIMNOW_USER_ID"), password("SIMNOW_PASSWORD");
+    struct File {
+        std::filesystem::path path=std::filesystem::temp_directory_path()/
+            ("simnow-dotenv-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        ~File() {std::error_code error; std::filesystem::remove(path,error);}
+    } file;
+    const nlohmann::json json={{"trading_front","tcp://test:1"},{"market_front","tcp://test:2"},{"instrument","rb2610"}};
+    const auto read=[&] {return SimNowConfig::fromJson(json,0,file.path.string());};
+    const auto fails=[&](const std::string& expected) {
+        try {read();} catch(const std::runtime_error& error) {
+            CHECK(std::string(error.what()).find(expected)!=std::string::npos);
+            CHECK(std::string(error.what()).find("private-value")==std::string::npos);
+            return;
+        }
+        throw std::runtime_error("Expected credential failure");
+    };
+    fails("SIMNOW_USER_ID");
+    { std::ofstream out(file.path); out<<"\xEF\xBB\xBF# Test fixture\r\nexport SIMNOW_USER_ID = 'file-user' # comment\r\n"
+        <<"UNRELATED_KEY=ignored\r\nSIMNOW_PASSWORD=\"private-value#=$\"\r\n"; }
+    auto config=read(); CHECK(config.user=="file-user"); CHECK(config.password=="private-value#=$");
+    CHECK(std::getenv("SIMNOW_USER_ID")==nullptr);
+    setenv("SIMNOW_USER_ID","env-user",1);
+    config=read(); CHECK(config.user=="env-user"); CHECK(config.password=="private-value#=$");
+    setenv("SIMNOW_PASSWORD","env-password",1);
+    std::filesystem::remove(file.path);
+    config=read(); CHECK(config.user=="env-user"); CHECK(config.password=="env-password");
+    setenv("SIMNOW_PASSWORD","",1);
+    {std::ofstream out(file.path); out<<"SIMNOW_PASSWORD=plain=value # comment\n";}
+    CHECK(read().password=="plain=value");
+    {std::ofstream out(file.path); out<<"SIMNOW_PASSWORD='private-value\n";}
+    fails("Invalid dotenv value for SIMNOW_PASSWORD");
+    {std::ofstream out(file.path); out<<"SIMNOW_PASSWORD=\n";}
+    fails("SIMNOW_PASSWORD");
+}
 
 template<class F> void until(F f) {
     const auto deadline=std::chrono::steady_clock::now()+2s;
@@ -30,6 +77,8 @@ struct Fake final : Ctp::Transport {
     std::atomic<int> query_count{0};
     bool dirty=false, working=false, reject_insert=false, cancel_fill=false, no_cancel=false;
     bool no_instrument=false, query_throttle=false;
+    int market_login_id=-1;
+    std::atomic<int> subscriptions{0};
     void start(const SimNowConfig&,Sink s) override {
         sink=std::move(s); emit(Kind::TraderConnected); emit(Kind::MarketConnected);
     }
@@ -44,7 +93,8 @@ struct Fake final : Ctp::Transport {
         switch(k) {
         case Kind::Login: case Kind::MarketLogin: {
             CThostFtdcRspUserLoginField p{}; p.FrontID=7; p.SessionID=8;
-            text(p.TradingDay,"20260928"); text(p.MaxOrderRef,"20"); emit(k,p,id); break;
+            text(p.TradingDay,"20260928"); text(p.MaxOrderRef,"20");
+            emit(k,p,k==Kind::MarketLogin && market_login_id>=0 ? market_login_id : id); break;
         }
         case Kind::Instrument: {
             ++query_count;
@@ -68,7 +118,7 @@ struct Fake final : Ctp::Transport {
             else emit(k,{},id);
             break;
         }
-        case Kind::Subscription: emit(k,{},id); emit(Kind::Depth,depth()); break;
+        case Kind::Subscription: ++subscriptions; emit(k,{},id); emit(Kind::Depth,depth()); break;
         default: emit(k,{},id); break;
         }
         return 0;
@@ -128,6 +178,17 @@ struct Fixture {
 };
 
 void startupChecks() {
+    {
+        Fixture f([](Fake& x){x.market_login_id=0;}); f.adapter->start();
+        CHECK(f.ready); CHECK(f.fake->subscriptions==1);
+        f.fake->emit(Kind::MarketLogin,CThostFtdcRspUserLoginField{},0);
+        f.adapter->stop(); CHECK(!f.adapter->failed()); CHECK(f.fake->subscriptions==1);
+    }
+    {
+        Fixture f([](Fake& x){x.market_login_id=999;});
+        bool threw=false; try {f.adapter->start();} catch(const std::runtime_error&){threw=true;}
+        CHECK(threw); CHECK(f.fake->subscriptions==0);
+    }
     for(int mode=0;mode<3;++mode) {
         Fixture f([&](Fake& x){x.dirty=mode==0; x.working=mode==1; x.no_instrument=mode==2;});
         bool threw=false; try {f.adapter->start();} catch(const std::runtime_error&){threw=true;}
@@ -236,7 +297,7 @@ void engineContract() {
 }
 
 int main() {
-    try { startupChecks(); tradingAndDuplicates(); shutdownAndFailures(); rejectionChecks(); engineContract();
+    try { credentialChecks(); startupChecks(); tradingAndDuplicates(); shutdownAndFailures(); rejectionChecks(); engineContract();
         CHECK(Ctp::price(std::numeric_limits<double>::max())==Common::Price_INVALID);
         CHECK(Ctp::price(NAN)==Common::Price_INVALID);
     } catch(const std::exception& e) {std::cerr<<e.what()<<'\n'; return 1;}

@@ -17,7 +17,8 @@ struct SimNowConfig {
     std::size_t capacity = 4096;
     std::chrono::milliseconds startup_timeout{60000}, shutdown_timeout{10000};
     std::chrono::milliseconds query_interval{1000};
-    static SimNowConfig fromJson(const nlohmann::json&, Common::TickerId);
+    static SimNowConfig fromJson(const nlohmann::json&, Common::TickerId,
+                                const std::string& dotenv_path = ".env");
 };
 
 namespace Ctp {
