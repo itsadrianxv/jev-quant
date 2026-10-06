@@ -151,13 +151,13 @@ struct SimNowVenueAdapter::Impl {
         state_sink(enabled,account,instrument.VolumeMultiple>0 ? instrument.VolumeMultiple : 1);
     }
     void fail(const std::string& reason) {
-        { std::lock_guard lock(mutex); if(error.empty()) error=reason; }
+        { std::scoped_lock lock(mutex); if(error.empty()) error=reason; }
         fatal=true; active=false; state(false); changed.notify_all();
         std::osyncstream(std::cerr)<<"event=simnow_failure reason="<<reason<<'\n';
     }
     void enqueue(Ctp::Event event) noexcept {
         try {
-            std::lock_guard lock(mutex);
+            std::scoped_lock lock(mutex);
             if(events.size()>=config.capacity) { overflow=true; return; }
             events.push_back(std::move(event));
         } catch(...) { overflow=true; }
@@ -391,7 +391,7 @@ struct SimNowVenueAdapter::Impl {
             if(!market_started) { market->start(); market_started=true; }
             if(overflow.exchange(false)) fail("CTP callback queue exhausted; execution status may be unknown");
             std::deque<Ctp::Event> batch;
-            { std::lock_guard lock(mutex); batch.swap(events); }
+            { std::scoped_lock lock(mutex); batch.swap(events); }
             for(const auto& e:batch) {
                 try { event(e); } catch(const std::exception& ex) { fail(ex.what()); }
             }
@@ -399,7 +399,7 @@ struct SimNowVenueAdapter::Impl {
             if(stopping) {
                 state(false);
                 for(auto& [ref,o]:orders) cancel(o);
-                if(!outstanding()) { std::lock_guard lock(mutex); stop_done=true; changed.notify_all(); }
+                if(!outstanding()) { std::scoped_lock lock(mutex); stop_done=true; changed.notify_all(); }
                 return;
             }
             if(fatal) return;
@@ -465,6 +465,6 @@ void SimNowVenueAdapter::stop() {
 }
 bool SimNowVenueAdapter::running() const noexcept { return impl_->active.load(); }
 bool SimNowVenueAdapter::failed() const noexcept { return impl_->fatal.load(); }
-std::string SimNowVenueAdapter::failure() const { std::lock_guard lock(impl_->mutex); return impl_->error; }
+std::string SimNowVenueAdapter::failure() const { std::scoped_lock lock(impl_->mutex); return impl_->error; }
 int SimNowVenueAdapter::position() const noexcept { return impl_->net_position.load(); }
 }

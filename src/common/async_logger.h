@@ -171,7 +171,7 @@ class AsyncLogger final {
 
     auto registerProducer(std::string component, std::string file_name)
             -> ProducerHandle {
-        std::lock_guard lock(mutex_);
+        std::scoped_lock lock(mutex_);
         if (stopped_) {
             throw std::logic_error("Cannot register logger producer after stop");
         }
@@ -200,7 +200,7 @@ class AsyncLogger final {
     }
 
     auto start() -> void {
-        std::lock_guard lock(mutex_);
+        std::scoped_lock lock(mutex_);
         if (started_) {
             return;
         }
@@ -212,7 +212,7 @@ class AsyncLogger final {
 
     auto stop() noexcept -> void {
         {
-            std::lock_guard lock(mutex_);
+            std::scoped_lock lock(mutex_);
             if (!started_ || stopped_) {
                 return;
             }
@@ -240,7 +240,7 @@ class AsyncLogger final {
     }
 
     auto drain() noexcept -> void {
-        std::lock_guard lock(mutex_);
+        std::scoped_lock lock(mutex_);
         for (auto& producer : producers_) {
             while (const auto* record = producer->queue.getNextToRead()) {
                 producer->file << record->timestamp_us << " ["
@@ -254,7 +254,7 @@ class AsyncLogger final {
     }
 
     [[nodiscard]] auto hasPendingRecords() const noexcept -> bool {
-        std::lock_guard lock(mutex_);
+        std::scoped_lock lock(mutex_);
         for (const auto& producer : producers_) {
             if (producer->queue.size() != 0) {
                 return true;

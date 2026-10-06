@@ -86,7 +86,7 @@ class TradeEngine final {
     // Configure before start; mailbox updates are safe from the venue thread.
     void enableSingleOrderVenue() noexcept { single_order_venue_ = true; simex_constraints_ = true; venue_ready_ = false; }
     void updateVenueState(bool ready, AccountState account, double multiplier) {
-        std::lock_guard lock(venue_mutex_);
+        std::scoped_lock lock(venue_mutex_);
         venue_account_ = account;
         venue_multiplier_ = multiplier;
         venue_ready_.store(ready);

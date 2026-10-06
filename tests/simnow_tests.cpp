@@ -124,10 +124,10 @@ struct Fake final : Ctp::Transport {
         return 0;
     }
     int insert(const CThostFtdcInputOrderField& p,int) override {
-        std::lock_guard lock(mutex); sent.push_back(p); return reject_insert ? -1 : 0;
+        std::scoped_lock lock(mutex); sent.push_back(p); return reject_insert ? -1 : 0;
     }
-    CThostFtdcInputOrderField latest() { std::lock_guard lock(mutex); return sent.back(); }
-    std::size_t count() { std::lock_guard lock(mutex); return sent.size(); }
+    CThostFtdcInputOrderField latest() { std::scoped_lock lock(mutex); return sent.back(); }
+    std::size_t count() { std::scoped_lock lock(mutex); return sent.size(); }
     CThostFtdcOrderField order(const CThostFtdcInputOrderField& in,char status,int volume=0) {
         CThostFtdcOrderField p{}; text(p.OrderRef,in.OrderRef); text(p.InstrumentID,in.InstrumentID);
         text(p.OrderSysID,"000000001"); text(p.ExchangeID,"SHFE");
@@ -141,7 +141,7 @@ struct Fake final : Ctp::Transport {
     }
     int cancel(const CThostFtdcInputOrderActionField& p,int) override {
         CThostFtdcInputOrderField in;
-        {std::lock_guard lock(mutex); canceled.push_back(p); in=sent.back();}
+        {std::scoped_lock lock(mutex); canceled.push_back(p); in=sent.back();}
         if(no_cancel) return 0;
         if(cancel_fill) {
             emit(Kind::Order,order(in,THOST_FTDC_OST_AllTraded,1));

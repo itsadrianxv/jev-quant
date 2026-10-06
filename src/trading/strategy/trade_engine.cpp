@@ -320,7 +320,7 @@ auto TradeEngine::buildJevEvaluationState(
     double pnl_factor = 1.0;
     state.account_ = account_state_;
     if (single_order_venue_) {
-        std::lock_guard lock(venue_mutex_);
+        std::scoped_lock lock(venue_mutex_);
         state.price_scale_ = 100000000.0;
         state.pnl_before_fees_ = true;
         state.account_ = venue_account_;

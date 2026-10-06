@@ -15,7 +15,7 @@ auto BinanceWebSocketStream::start() -> void {
     if (worker_.joinable()) throw std::runtime_error("WebSocket stream already started");
     stopping_.store(false, std::memory_order_release);
     {
-        std::lock_guard lock(state_mutex_);
+        std::scoped_lock lock(state_mutex_);
         connected_ = false;
     }
     worker_ = std::thread(&BinanceWebSocketStream::run, this);
@@ -52,7 +52,7 @@ auto BinanceWebSocketStream::run() -> void {
         ws.next_layer().handshake(asio::ssl::stream_base::client);
         ws.handshake("demo-fstream.binance.com", target_);
         {
-            std::lock_guard lock(state_mutex_);
+            std::scoped_lock lock(state_mutex_);
             connected_ = true;
         }
         state_changed_.notify_all();

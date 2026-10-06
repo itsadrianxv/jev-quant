@@ -417,7 +417,7 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
     depth_stream_ = std::make_unique<BinanceWebSocketStream>(
             "/ws/" + lowerSymbol(config_.symbol) + "@depth@100ms",
             [this](const nlohmann::json& message) {
-                std::lock_guard lock(book_mutex_);
+                std::scoped_lock lock(book_mutex_);
                 if (!depth_snapshot_ready_) {
                     pending_depth_events_.push_back(message);
                     return;
@@ -438,7 +438,7 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
     reportStartupStage("depth_snapshot");
     const auto depth = fetchDepth(config_.symbol);
     {
-        std::lock_guard lock(book_mutex_);
+        std::scoped_lock lock(book_mutex_);
         bids_.clear();
         asks_.clear();
         for (const auto& level : depth.at("bids")) {
