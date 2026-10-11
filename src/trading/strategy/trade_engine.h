@@ -17,6 +17,7 @@
 #include "exchange/order_server/client_request.h"
 #include "exchange/order_server/client_response.h"
 #include "jev_decision.h"
+#include "feature_engine.h"
 #include "market_order_book.h"
 #include "order_manager.h"
 #include "position_keeper.h"
@@ -155,7 +156,7 @@ class TradeEngine final {
     OrderManager order_manager_;
     AccountState account_state_{};
     std::array<std::atomic<std::uint64_t>, Common::ME_MAX_TICKERS> latest_evaluation_ids_{};
-    std::array<bool, Common::ME_MAX_TICKERS> instrument_ready_{};
+    std::array<FeatureEngine, Common::ME_MAX_TICKERS> feature_engines_{};
     JevEvaluationStateLFQueue* outgoing_jev_evaluations_ = nullptr;
     std::chrono::milliseconds jev_evaluation_interval_{2000};
     std::chrono::steady_clock::time_point next_jev_evaluation_at_{};

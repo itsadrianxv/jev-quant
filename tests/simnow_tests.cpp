@@ -2,6 +2,7 @@
 #include "trading/strategy/trade_engine.h"
 #include "trading/strategy/jev_http_client.h"
 #include <cstring>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -287,7 +288,9 @@ void engineContract() {
     CHECK(std::abs(state.position_.unrealized_pnl_-30)<0.001);
     JevHttpClient client({}); auto json=nlohmann::json::parse(client.buildRequestBody(state));
     CHECK(json["state"]["position"]["average_entry_price"]==800.02);
-    CHECK(json["state"]["depth"]["bids"][0]["price"]==800.04);
+    CHECK(!json["state"]["depth"].contains("bids"));
+    CHECK(!json["state"]["depth"].contains("asks"));
+    CHECK(std::abs(json["state"]["features"]["mid_price"].get<double>()-800.05)<1e-9);
     CHECK(json["state"]["position"].contains("pnl_basis"));
     engine.updateVenueState(true,{500,500,1000},2000);
     const auto refreshed=engine.buildJevEvaluationState(0,5);

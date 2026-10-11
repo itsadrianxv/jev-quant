@@ -1,5 +1,6 @@
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -588,6 +589,15 @@ void testJevWorkerAndEvaluationExpiry() {
     Trading::MockJevDecisionProvider provider;
     Trading::JevWorker worker(&states, &decisions, &provider);
 
+    Exchange::MarketUpdate market;
+    market.type_ = Exchange::MarketUpdateType::DEPTH_SNAPSHOT;
+    market.ticker_id_ = 0;
+    market.depth_snapshot_.bids_[0] = {99, 2};
+    market.depth_snapshot_.asks_[0] = {101, 3};
+    *market_updates.getNextToWriteTo() = market;
+    market_updates.updateWriteIndex();
+    engine.processPending();
+
     auto* state = states.getNextToWriteTo();
     state->evaluation_id_ = 3;
     state->ticker_id_ = 0;
@@ -985,7 +995,152 @@ void testSimexReadinessAndPositionGuards() {
     CHECK(requests.size() == 0);  // An opposite OPEN is not a close.
 }
 
+void testFeatureEngineContract() {
+    Trading::MarketOrderBook book(0);
+    Trading::FeatureEngine features;
+    auto update = [&](Common::Price bid, Common::Price ask, Common::Qty bq, Common::Qty aq) {
+        Exchange::DepthSnapshot depth;
+        depth.bids_[0] = {bid, bq};
+        depth.asks_[0] = {ask, aq};
+        book.onDepthSnapshot(depth);
+        features.onMarketUpdate(book);
+        return features.features();
+    };
+    CHECK(!features.features().valid_);
+    const auto first = update(100, 101, 2, 6);
+    CHECK(first.valid_);
+    CHECK(first.mid_price_ == 100.5);
+    CHECK(std::abs(first.relative_spread_bps_ - 10000.0 / 100.5) < 1e-9);
+    CHECK(first.top_of_book_total_qty_ == 8);
+    CHECK(first.top_of_book_qty_imbalance_ == -0.5);
+    CHECK(update(100, 101, 6, 2).top_of_book_qty_imbalance_ == 0.5);
+    const auto large = update(Common::Price_INVALID - 100, Common::Price_INVALID - 1,
+                              Common::Qty_INVALID - 1, Common::Qty_INVALID - 1);
+    CHECK(large.valid_);
+    CHECK(large.top_of_book_total_qty_ == 2ULL * (Common::Qty_INVALID - 1));
+    CHECK(large.relative_spread_bps_ > 0);
+    for (const auto invalid : {update(100, 100, 1, 1), update(101, 100, 1, 1),
+                               update(0, 100, 1, 1), update(-1, 100, 1, 1),
+                               update(100, Common::Price_INVALID, 1, 1),
+                               update(Common::Price_INVALID, 101, 1, 1),
+                               update(100, 101, 0, 1), update(100, 101, 1, 0),
+                               update(100, 101, Common::Qty_INVALID, 1),
+                               update(100, 101, 1, Common::Qty_INVALID)}) {
+        CHECK(!invalid.valid_);
+        CHECK(invalid.mid_price_ == 0);
+    }
+    CHECK(update(99, 101, 1, 1).valid_);
+}
+
+void testFeatureSnapshotsAndRecovery() {
+    for (int venue = 0; venue < 3; ++venue) {
+        Exchange::ClientRequestLFQueue requests(16);
+        Exchange::ClientResponseLFQueue responses(16);
+        Exchange::MarketUpdateLFQueue updates(16);
+        Trading::JevDecisionLFQueue decisions(16);
+        Trading::JevEvaluationStateLFQueue evaluations(16);
+        Trading::TradeEngine engine(7, {10, 10, 0.0}, &requests, &responses, &updates, &decisions);
+        if (venue == 1) engine.enableSimexConstraints();
+        if (venue == 2) {
+            engine.enableSingleOrderVenue();
+            engine.updateVenueState(true, {}, 1);
+        }
+        engine.attachJevEvaluationQueue(&evaluations, std::chrono::milliseconds(0));
+        auto publish = [&](Common::TickerId ticker, Common::Price bid, Common::Price ask) {
+            Exchange::MarketUpdate market;
+            market.type_ = Exchange::MarketUpdateType::DEPTH_SNAPSHOT;
+            market.ticker_id_ = ticker;
+            market.depth_snapshot_.bids_[0] = {bid, 2};
+            market.depth_snapshot_.asks_[0] = {ask, 6};
+            *updates.getNextToWriteTo() = market;
+            updates.updateWriteIndex();
+            engine.processPending();
+        };
+        publish(0, 100, 101);
+        CHECK(evaluations.size() == 1);
+        const auto captured = *evaluations.getNextToRead();
+        evaluations.updateReadIndex();
+        publish(1, 200, 202);
+        CHECK(engine.buildJevEvaluationState(1, 100).market_features_.mid_price_ == 201);
+        CHECK(engine.buildJevEvaluationState(0, 101).market_features_.mid_price_ == 100.5);
+        while (evaluations.getNextToRead()) evaluations.updateReadIndex();
+        publish(0, 100, Common::Price_INVALID);
+        CHECK(evaluations.size() == 0);
+        CHECK(!engine.acceptsEvaluation(captured));
+        Trading::MockJevDecisionProvider provider;
+        Trading::JevWorker worker(&evaluations, &decisions, &provider);
+        worker.setEvaluationFilter([&](const auto& state) { return engine.acceptsEvaluation(state); });
+        *evaluations.getNextToWriteTo() = captured;
+        evaluations.updateWriteIndex();
+        CHECK(worker.processPending());
+        CHECK(decisions.size() == 0);
+        publish(0, 110, 112);
+        CHECK(evaluations.size() == 1);
+        CHECK(captured.market_features_.mid_price_ == 100.5);
+        CHECK(evaluations.getNextToRead()->market_features_.mid_price_ == 111);
+        Trading::JevDecision stale;
+        stale.ticker_id_ = 0;
+        stale.evaluation_id_ = captured.evaluation_id_;
+        stale.bias_ = Trading::JevBias::LONG;
+        stale.intent_ = Trading::JevIntent::OPEN;
+        *decisions.getNextToWriteTo() = stale;
+        decisions.updateWriteIndex();
+        engine.processPending();
+        CHECK(requests.size() == 0);
+
+        auto state = captured;
+        state.price_scale_ = 100;
+        Trading::JevHttpClient client({});
+        const auto json = nlohmann::json::parse(client.buildRequestBody(state))["state"];
+        CHECK(!json["depth"].contains("bids"));
+        CHECK(!json["depth"].contains("asks"));
+        CHECK(json["depth"].contains("last_price"));
+        CHECK(json["features"]["mid_price"] == 1.005);
+        CHECK(json["features"]["top_of_book_total_qty"] == 8);
+        CHECK(json["features"]["top_of_book_qty_imbalance"] == -0.5);
+        CHECK(std::abs(json["features"]["relative_spread_bps"].get<double>() - 10000.0 / 100.5) < 1e-9);
+        CHECK(json.contains("position") && json.contains("risk") && json.contains("account"));
+    }
+}
+
+void testIncrementalFeatureUpdates() {
+    Exchange::ClientRequestLFQueue requests(8);
+    Exchange::ClientResponseLFQueue responses(8);
+    Exchange::MarketUpdateLFQueue updates(8);
+    Trading::JevDecisionLFQueue decisions(8);
+    Trading::JevEvaluationStateLFQueue evaluations(8);
+    Trading::TradeEngine engine(&requests, &responses, &updates, &decisions);
+    engine.attachJevEvaluationQueue(&evaluations, std::chrono::milliseconds(0));
+    auto publish = [&](Exchange::MarketUpdateType type, Common::OrderId id, Common::Side side,
+                       Common::Price price, Common::Qty qty) {
+        Exchange::MarketUpdate update;
+        update.type_ = type;
+        update.ticker_id_ = 0;
+        update.order_id_ = id;
+        update.side_ = side;
+        update.price_ = price;
+        update.qty_ = qty;
+        *updates.getNextToWriteTo() = update;
+        updates.updateWriteIndex();
+        engine.processPending();
+    };
+    publish(Exchange::MarketUpdateType::ADD, 1, Common::Side::BUY, 100, 2);
+    CHECK(evaluations.size() == 0);
+    publish(Exchange::MarketUpdateType::ADD, 2, Common::Side::SELL, 102, 6);
+    CHECK(evaluations.size() == 1);
+    CHECK(evaluations.getNextToRead()->market_features_.mid_price_ == 101);
+    evaluations.updateReadIndex();
+    publish(Exchange::MarketUpdateType::MODIFY, 1, Common::Side::BUY, 100, 6);
+    CHECK(evaluations.getNextToRead()->market_features_.top_of_book_qty_imbalance_ == 0);
+    evaluations.updateReadIndex();
+    publish(Exchange::MarketUpdateType::CLEAR, 0, Common::Side::INVALID, 0, 0);
+    CHECK(evaluations.size() == 0);
+}
+
 int main() {
+    testIncrementalFeatureUpdates();
+    testFeatureEngineContract();
+    testFeatureSnapshotsAndRecovery();
     testSimexReadinessAndPositionGuards();
     testMemPoolContract();
     testMemPoolPlacementConstruction();

@@ -7,6 +7,7 @@
 #include "common/types.h"
 #include "exchange/market_data/market_update.h"
 #include "trading/strategy/om_order.h"
+#include "trading/strategy/feature_engine.h"
 
 namespace Trading {
 
@@ -47,6 +48,7 @@ struct JevEvaluationState {
     std::uint64_t evaluation_id_ = 0;
     Common::TickerId ticker_id_ = Common::TickerId_INVALID;
     Exchange::DepthSnapshot depth_snapshot_{};
+    MarketFeatures market_features_{};
     PositionState position_{};
     std::array<WorkingOrderState, 2> working_orders_{};
     AccountState account_{};

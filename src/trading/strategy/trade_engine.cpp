@@ -185,16 +185,9 @@ auto TradeEngine::handleClientResponse(
 auto TradeEngine::handleMarketUpdate(const Exchange::MarketUpdate& update,
                                                                           const MarketOrderBook& book) -> void {
     position_keeper_.updateBBO(update.ticker_id_, book.getBBO());
-    if (update.type_ == Exchange::MarketUpdateType::DEPTH_SNAPSHOT &&
-            update.ticker_id_ < instrument_ready_.size()) {
-        const auto* bbo = book.getBBO();
-        const bool ready = !simex_constraints_ ||
-                (bbo->bid_price_ > 0 && bbo->bid_price_ != Common::Price_INVALID &&
-                 bbo->ask_price_ > bbo->bid_price_ && bbo->ask_price_ != Common::Price_INVALID &&
-                 bbo->bid_qty_ > 0 && bbo->bid_qty_ != Common::Qty_INVALID &&
-                 bbo->ask_qty_ > 0 && bbo->ask_qty_ != Common::Qty_INVALID);
-        instrument_ready_.at(update.ticker_id_) = ready;
-        if (!ready) latest_evaluation_ids_.at(update.ticker_id_) = 0;
+    feature_engines_.at(update.ticker_id_).onMarketUpdate(book);
+    if (!feature_engines_.at(update.ticker_id_).features().valid_) {
+        latest_evaluation_ids_.at(update.ticker_id_).store(0, std::memory_order_release);
     }
     onMarketUpdate(update, book);
 }
@@ -217,7 +210,7 @@ auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
         return;
     }
 
-    if (simex_constraints_ && !instrument_ready_.at(decision.ticker_id_)) return;
+    if (!feature_engines_.at(decision.ticker_id_).features().valid_) return;
 
     if (single_order_venue_) {
         for (const auto side : {Common::Side::BUY, Common::Side::SELL}) {
@@ -297,7 +290,7 @@ auto TradeEngine::attachJevEvaluationQueue(
 auto TradeEngine::scheduleJevEvaluation() -> bool {
     if (single_order_venue_ && !venue_ready_.load()) return false;
     if (outgoing_jev_evaluations_ == nullptr ||
-            !instrument_ready_.at(jev_ticker_id_) ||
+            !feature_engines_.at(jev_ticker_id_).features().valid_ ||
             std::chrono::steady_clock::now() < next_jev_evaluation_at_) {
         return false;
     }
@@ -347,6 +340,10 @@ auto TradeEngine::buildJevEvaluationState(
     state.evaluation_id_ = evaluation_id;
     state.ticker_id_ = ticker_id;
     state.depth_snapshot_ = *ticker_order_books_.at(ticker_id)->getDepthSnapshot();
+    state.market_features_ = feature_engines_.at(ticker_id).features();
+    if (!state.market_features_.valid_) {
+        throw std::logic_error("Cannot build Jev evaluation state without valid market features");
+    }
 
     const auto& position = position_keeper_.getPositionInfo(ticker_id);
     state.position_.net_position_ = position.position_;

@@ -159,7 +159,7 @@ int main(int argc, char** argv) {
         auto jev_config = Trading::loadJevHttpConfig(".env", config_path);
         Trading::JevHttpClient jev_client(std::move(jev_config));
         Trading::JevWorker jev_worker(&evaluations, &decisions, &jev_client, &logger);
-        if (simex || simnow) jev_worker.setEvaluationFilter([&](const auto& state) { return engine.acceptsEvaluation(state); });
+        jev_worker.setEvaluationFilter([&](const auto& state) { return engine.acceptsEvaluation(state); });
 
         std::signal(SIGINT, onSignal);
         std::signal(SIGTERM, onSignal);

@@ -1,6 +1,7 @@
 #include "jev_http_client.h"
 
 #include <chrono>
+#include <cmath>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -58,6 +59,9 @@ auto JevHttpClient::buildRequestBody(const JevEvaluationState& state) const
     const auto qtyValue = [](Common::Qty value) -> Json {
         return value == Common::Qty_INVALID ? Json(nullptr) : Json(value);
     };
+    const auto doubleValue = [&](double value) -> Json {
+        return std::isfinite(value) ? Json(value) : Json(nullptr);
+    };
     const Json criteria = position.net_position_ == 0
                                                         ? Json{{"open", "open a position"}, {"hold", "take no action"}}
                                                         : Json{{"open", "increase exposure"},
@@ -73,14 +77,6 @@ auto JevHttpClient::buildRequestBody(const JevEvaluationState& state) const
                                                             {"offset", Common::orderOffsetToString(order.offset_)},
                                                             {"state", omOrderStateToString(order.state_)}});
     }
-    Json bids = Json::array();
-    for (const auto& level : depth.bids_)
-        if (level.price_ != Common::Price_INVALID && level.qty_ != Common::Qty_INVALID && level.qty_ > 0)
-            bids.push_back({{"price", priceValue(level.price_)}, {"qty", level.qty_}});
-    Json asks = Json::array();
-    for (const auto& level : depth.asks_)
-        if (level.price_ != Common::Price_INVALID && level.qty_ != Common::Qty_INVALID && level.qty_ > 0)
-            asks.push_back({{"price", priceValue(level.price_)}, {"qty", level.qty_}});
     Json state_json = {
             {"evaluation_id", state.evaluation_id_}, {"ticker_id", state.ticker_id_},
             {"position", {{"net", position.net_position_}, {"today", position.today_qty_},
@@ -89,7 +85,12 @@ auto JevHttpClient::buildRequestBody(const JevEvaluationState& state) const
                                           {"realized_pnl", position.realized_pnl_},
                                           {"unrealized_pnl", position.unrealized_pnl_}}},
             {"working_orders", working_orders},
-            {"depth", {{"last_price", priceValue(depth.last_price_)}, {"bids", bids}, {"asks", asks},
+            {"features", {{"valid", state.market_features_.valid_},
+                           {"mid_price", state.market_features_.valid_ ? doubleValue(state.market_features_.mid_price_ / state.price_scale_) : Json(nullptr)},
+                           {"relative_spread_bps", state.market_features_.valid_ ? doubleValue(state.market_features_.relative_spread_bps_) : Json(nullptr)},
+                           {"top_of_book_total_qty", state.market_features_.valid_ ? Json(state.market_features_.top_of_book_total_qty_) : Json(nullptr)},
+                           {"top_of_book_qty_imbalance", state.market_features_.valid_ ? doubleValue(state.market_features_.top_of_book_qty_imbalance_) : Json(nullptr)} }},
+            {"depth", {{"last_price", priceValue(depth.last_price_)},
                                     {"volume", qtyValue(depth.volume_)}, {"open_interest", depth.open_interest_},
                                     {"upper_limit_price", priceValue(depth.upper_limit_price_)},
                                     {"lower_limit_price", priceValue(depth.lower_limit_price_)}}},
