@@ -72,8 +72,9 @@ auto TradeEngine::run() -> void {
         log_handle_.emplace(logger_->registerProducer(
                 "TradeEngine", "trade-engine-" + std::to_string(client_id_) + ".log"));
         log_handle_->bindToCurrentThread();
-        log_handle_->log(Common::LogLevel::INFO,
-                         "event=component_started client_id=" + std::to_string(client_id_));
+        log_handle_->logFixed(Common::LogLevel::INFO, [this](Common::LogWriter& out) {
+            out.append("event=component_started client_id=").append(client_id_);
+        });
     }
     while (running()) {
         if (!processPending()) {
@@ -81,8 +82,9 @@ auto TradeEngine::run() -> void {
         }
     }
     if (log_handle_) {
-        log_handle_->log(Common::LogLevel::INFO,
-                         "event=component_stopped client_id=" + std::to_string(client_id_));
+        log_handle_->logFixed(Common::LogLevel::INFO, [this](Common::LogWriter& out) {
+            out.append("event=component_stopped client_id=").append(client_id_);
+        });
     }
 }
 
@@ -99,10 +101,13 @@ auto TradeEngine::processClientResponses() -> bool {
     bool processed = false;
     while (const auto* response = incoming_responses_->getNextToRead()) {
         if (log_handle_) {
-            log_handle_->log(Common::LogLevel::INFO,
-                             "event=client_response_consumed client_id=" +
-                                     std::to_string(client_id_) + " ticker_id=" +
-                                     std::to_string(response->ticker_id_));
+            log_handle_->logFixed(Common::LogLevel::INFO,
+                                  [&](Common::LogWriter& out) {
+                                      out.append("event=client_response_consumed client_id=")
+                                              .append(client_id_)
+                                              .append(" ticker_id=")
+                                              .append(response->ticker_id_);
+                                  });
         }
         handleClientResponse(*response);
         incoming_responses_->updateReadIndex();
@@ -121,10 +126,13 @@ auto TradeEngine::processMarketUpdates() -> bool {
         auto& book = *ticker_order_books_.at(update->ticker_id_);
         if (log_handle_ && (verbose_market_data_ ||
                             update->type_ == Exchange::MarketUpdateType::DEPTH_SNAPSHOT)) {
-            log_handle_->log(Common::LogLevel::DEBUG,
-                             "event=market_update_consumed client_id=" +
-                                     std::to_string(client_id_) + " ticker_id=" +
-                                     std::to_string(update->ticker_id_));
+            log_handle_->logFixed(Common::LogLevel::DEBUG,
+                                  [&](Common::LogWriter& out) {
+                                      out.append("event=market_update_consumed client_id=")
+                                              .append(client_id_)
+                                              .append(" ticker_id=")
+                                              .append(update->ticker_id_);
+                                  });
         }
         book.onMarketUpdate(*update);
         handleMarketUpdate(*update, book);
@@ -138,10 +146,13 @@ auto TradeEngine::processJevDecisions() -> bool {
     bool processed = false;
     while (const auto* decision = incoming_jev_decisions_->getNextToRead()) {
         if (log_handle_) {
-            log_handle_->log(Common::LogLevel::INFO,
-                             "event=decision_consumed client_id=" +
-                                     std::to_string(client_id_) + " evaluation_id=" +
-                                     std::to_string(decision->evaluation_id_));
+            log_handle_->logFixed(Common::LogLevel::INFO,
+                                  [&](Common::LogWriter& out) {
+                                      out.append("event=decision_consumed client_id=")
+                                              .append(client_id_)
+                                              .append(" evaluation_id=")
+                                              .append(decision->evaluation_id_);
+                                  });
         }
         handleJevDecision(*decision);
         incoming_jev_decisions_->updateReadIndex();
@@ -195,10 +206,13 @@ auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
             decision.evaluation_id_ !=
                     latest_evaluation_ids_.at(decision.ticker_id_)) {
         if (log_handle_) {
-            log_handle_->log(Common::LogLevel::WARN,
-                             "event=stale_decision_dropped client_id=" +
-                                     std::to_string(client_id_) + " evaluation_id=" +
-                                     std::to_string(decision.evaluation_id_));
+            log_handle_->logFixed(Common::LogLevel::WARN,
+                                  [&](Common::LogWriter& out) {
+                                      out.append("event=stale_decision_dropped client_id=")
+                                              .append(client_id_)
+                                              .append(" evaluation_id=")
+                                              .append(decision.evaluation_id_);
+                                  });
         }
         return;
     }
@@ -298,11 +312,15 @@ auto TradeEngine::scheduleJevEvaluation() -> bool {
     *slot = state;
     outgoing_jev_evaluations_->updateWriteIndex();
     if (log_handle_) {
-        log_handle_->log(Common::LogLevel::INFO,
-                         "event=evaluation_enqueued client_id=" +
-                                 std::to_string(client_id_) + " evaluation_id=" +
-                                 std::to_string(evaluation_id) + " ticker_id=" +
-                                 std::to_string(jev_ticker_id_));
+        log_handle_->logFixed(Common::LogLevel::INFO,
+                              [&](Common::LogWriter& out) {
+                                  out.append("event=evaluation_enqueued client_id=")
+                                          .append(client_id_)
+                                          .append(" evaluation_id=")
+                                          .append(evaluation_id)
+                                          .append(" ticker_id=")
+                                          .append(jev_ticker_id_);
+                              });
     }
     next_jev_evaluation_at_ = std::chrono::steady_clock::now() +
                                                           jev_evaluation_interval_;
@@ -364,10 +382,13 @@ auto TradeEngine::sendClientRequest(const Exchange::ClientRequest& request)
     *slot = request;
     outgoing_requests_->updateWriteIndex();
     if (log_handle_) {
-        log_handle_->log(Common::LogLevel::INFO,
-                         "event=client_request_enqueued client_id=" +
-                                 std::to_string(client_id_) + " ticker_id=" +
-                                 std::to_string(request.ticker_id_));
+        log_handle_->logFixed(Common::LogLevel::INFO,
+                              [&](Common::LogWriter& out) {
+                                  out.append("event=client_request_enqueued client_id=")
+                                          .append(client_id_)
+                                          .append(" ticker_id=")
+                                          .append(request.ticker_id_);
+                              });
     }
 }
 

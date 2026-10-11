@@ -112,6 +112,10 @@ int main(int argc, char** argv) {
             };
             engine.onJevDecision = [&](const auto& decision) {
                 ++valid_decisions;
+                // TODO(mempool): These per-decision/per-fill writes bypass the
+                // async logger and run on the trade engine thread. Reroute
+                // them through a registered producer once live-runner console
+                // parsing no longer depends on stderr content.
                 std::clog << "event=live_jev_decision evaluation_id=" << decision.evaluation_id_
                           << " intent=" << static_cast<int>(decision.intent_) << '\n';
             };

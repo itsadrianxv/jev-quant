@@ -30,8 +30,9 @@ auto OrderGateway::run() -> void {
         log_handle_.emplace(logger_->registerProducer(
                 "OrderGateway", "order-gateway-" + std::to_string(client_id_) + ".log"));
         log_handle_->bindToCurrentThread();
-        log_handle_->log(Common::LogLevel::INFO,
-                         "event=component_started client_id=" + std::to_string(client_id_));
+        log_handle_->logFixed(Common::LogLevel::INFO, [this](Common::LogWriter& out) {
+            out.append("event=component_started client_id=").append(client_id_);
+        });
     }
     while (running()) {
         if (poll_handler_) poll_handler_();
@@ -40,8 +41,9 @@ auto OrderGateway::run() -> void {
         }
     }
     if (log_handle_) {
-        log_handle_->log(Common::LogLevel::INFO,
-                         "event=component_stopped client_id=" + std::to_string(client_id_));
+        log_handle_->logFixed(Common::LogLevel::INFO, [this](Common::LogWriter& out) {
+            out.append("event=component_stopped client_id=").append(client_id_);
+        });
     }
 }
 
@@ -54,10 +56,13 @@ auto OrderGateway::processPending() -> bool {
     while (const auto* request = outgoing_requests_->getNextToRead()) {
         const auto sequence = next_outgoing_seq_num_++;
         if (log_handle_) {
-            log_handle_->log(Common::LogLevel::INFO,
-                             "event=client_request_consumed client_id=" +
-                                     std::to_string(client_id_) + " sequence=" +
-                                     std::to_string(sequence));
+            log_handle_->logFixed(Common::LogLevel::INFO,
+                                  [&](Common::LogWriter& out) {
+                                      out.append("event=client_request_consumed client_id=")
+                                              .append(client_id_)
+                                              .append(" sequence=")
+                                              .append(sequence);
+                                  });
         }
         if (request_handler_) {
             request_handler_(sequence, *request);
@@ -78,11 +83,15 @@ auto OrderGateway::publishClientResponse(
     }
     if (seq_num != next_exp_seq_num_) {
         if (log_handle_) {
-            log_handle_->log(Common::LogLevel::ERROR,
-                             "event=response_sequence_gap client_id=" +
-                                     std::to_string(client_id_) + " expected=" +
-                                     std::to_string(next_exp_seq_num_) + " actual=" +
-                                     std::to_string(seq_num));
+            log_handle_->logFixed(Common::LogLevel::ERROR,
+                                  [&](Common::LogWriter& out) {
+                                      out.append("event=response_sequence_gap client_id=")
+                                              .append(client_id_)
+                                              .append(" expected=")
+                                              .append(next_exp_seq_num_)
+                                              .append(" actual=")
+                                              .append(seq_num);
+                                  });
         }
         throw std::logic_error("OrderGateway response sequence gap");
     }
@@ -95,10 +104,13 @@ auto OrderGateway::publishClientResponse(
     incoming_responses_->updateWriteIndex();
     ++next_exp_seq_num_;
     if (log_handle_) {
-        log_handle_->log(Common::LogLevel::INFO,
-                         "event=client_response_published client_id=" +
-                                 std::to_string(client_id_) + " sequence=" +
-                                 std::to_string(seq_num));
+        log_handle_->logFixed(Common::LogLevel::INFO,
+                              [&](Common::LogWriter& out) {
+                                  out.append("event=client_response_published client_id=")
+                                          .append(client_id_)
+                                          .append(" sequence=")
+                                          .append(seq_num);
+                              });
     }
 }
 
