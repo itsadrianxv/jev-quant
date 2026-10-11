@@ -57,7 +57,7 @@ auto TradeEngine::start() -> void {
                                                                                 std::memory_order_acq_rel)) {
         return;
     }
-    worker_ = std::thread([this] { run(); });
+    worker_ = std::jthread([this] { run(); });
 }
 
 auto TradeEngine::stop() -> void {

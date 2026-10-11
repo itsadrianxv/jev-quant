@@ -512,7 +512,7 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
         throw std::runtime_error("Binance user WebSocket did not connect");
     }
     keepalive_running_.store(true, std::memory_order_release);
-    keepalive_thread_ = std::thread([this] {
+    keepalive_thread_ = std::jthread([this] {
         for (int tick = 0; keepalive_running_.load(std::memory_order_acquire); ++tick) {
             std::this_thread::sleep_for(std::chrono::seconds(1));
             if (tick < 1799 || !keepalive_running_.load(std::memory_order_acquire)) continue;

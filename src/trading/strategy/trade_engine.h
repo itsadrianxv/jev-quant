@@ -172,7 +172,7 @@ class TradeEngine final {
             ticker_order_books_{};
 
     std::atomic<bool> running_{false};
-    std::thread worker_;
+    std::jthread worker_;
     Common::AsyncLogger* logger_ = nullptr;
     std::optional<Common::AsyncLogger::ProducerHandle> log_handle_;
     bool verbose_market_data_ = false;

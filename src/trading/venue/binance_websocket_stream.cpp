@@ -18,7 +18,7 @@ auto BinanceWebSocketStream::start() -> void {
         std::scoped_lock lock(state_mutex_);
         connected_ = false;
     }
-    worker_ = std::thread(&BinanceWebSocketStream::run, this);
+    worker_ = std::jthread(&BinanceWebSocketStream::run, this);
 }
 auto BinanceWebSocketStream::waitUntilConnected(std::chrono::milliseconds timeout) -> bool {
     std::unique_lock lock(state_mutex_);

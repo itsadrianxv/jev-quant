@@ -187,7 +187,7 @@ void testAsyncLoggerWorkerBinding() {
 
     Common::AsyncLogger logger(output_dir, 8, std::chrono::milliseconds(1));
     auto producer = logger.registerProducer("Worker", "worker.log");
-    std::thread worker([producer = std::move(producer)]() mutable {
+    std::jthread worker([producer = std::move(producer)]() mutable {
         producer.bindToCurrentThread();
         producer.log(Common::LogLevel::INFO, "event=worker_bound");
     });
@@ -209,7 +209,7 @@ void testQueueSpscConcurrency() {
     std::atomic<bool> producer_done{false};
     std::atomic<int> consumed{0};
 
-    std::thread producer([&] {
+    std::jthread producer([&] {
         for (int value = 0; value < message_count; ++value) {
             int* slot = nullptr;
             while ((slot = queue.tryGetNextToWriteTo()) == nullptr) {
@@ -221,7 +221,7 @@ void testQueueSpscConcurrency() {
         producer_done.store(true, std::memory_order_release);
     });
 
-    std::thread consumer([&] {
+    std::jthread consumer([&] {
         int expected = 0;
         while (!producer_done.load(std::memory_order_acquire) || queue.size() != 0) {
             const int* slot = queue.getNextToRead();

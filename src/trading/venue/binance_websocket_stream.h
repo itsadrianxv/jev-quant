@@ -28,7 +28,7 @@ class BinanceWebSocketStream final {
     std::condition_variable state_changed_;
     bool connected_ = false;
     std::atomic<int> socket_fd_{-1};
-    std::thread worker_;
+    std::jthread worker_;
 };
 }
 

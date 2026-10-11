@@ -91,7 +91,7 @@ class BinanceUmFuturesVenueAdapter final : public VenueAdapter {
     std::unique_ptr<BinanceWebSocketStream> user_stream_;
     std::string listen_key_;
     std::atomic<bool> keepalive_running_{false};
-    std::thread keepalive_thread_;
+    std::jthread keepalive_thread_;
     nlohmann::json account_state_;
     std::map<double, double> bids_;
     std::map<double, double> asks_;

@@ -80,7 +80,7 @@ class JevWorker final {
     std::function<bool(const JevEvaluationState&)> evaluation_filter_;
     std::atomic<bool> running_{false};
     std::atomic<std::uint64_t> failure_count_{0};
-    std::thread worker_;
+    std::jthread worker_;
     Common::AsyncLogger* logger_ = nullptr;
     std::optional<Common::AsyncLogger::ProducerHandle> log_handle_;
 };

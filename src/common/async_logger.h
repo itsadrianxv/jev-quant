@@ -207,7 +207,7 @@ class AsyncLogger final {
         stopped_ = false;
         started_ = true;
         running_.store(true, std::memory_order_release);
-        worker_ = std::thread([this] { run(); });
+        worker_ = std::jthread([this] { run(); });
     }
 
     auto stop() noexcept -> void {
@@ -267,7 +267,7 @@ class AsyncLogger final {
     std::size_t queue_capacity_;
     std::chrono::milliseconds poll_interval_;
     std::vector<std::unique_ptr<ProducerState>> producers_;
-    std::thread worker_;
+    std::jthread worker_;
     std::atomic<bool> running_{false};
     mutable std::mutex mutex_;
     std::condition_variable binding_cv_;

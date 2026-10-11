@@ -80,7 +80,7 @@ class OrderGateway final {
     RequestHandler request_handler_;
     std::function<void()> poll_handler_;
     std::atomic<bool> running_{false};
-    std::thread worker_;
+    std::jthread worker_;
     Common::AsyncLogger* logger_ = nullptr;
     std::optional<Common::AsyncLogger::ProducerHandle> log_handle_;
     std::size_t next_outgoing_seq_num_ = 1;
