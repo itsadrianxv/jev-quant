@@ -3,6 +3,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <charconv>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -20,6 +21,44 @@
 #include "common/lf_queue.h"
 
 namespace Common {
+
+/// A formatting cursor that appends text into fixed-capacity character
+/// storage without heap allocation. Appends past the capacity are dropped,
+/// so a formatted line is at most truncated, never overrun. Text is kept
+/// NUL-terminated after every append.
+class LogWriter final {
+  public:
+    LogWriter(char* storage, std::size_t capacity) noexcept
+            : storage_(storage), capacity_(capacity) {
+        storage_[0] = '\0';
+    }
+
+    auto append(std::string_view text) noexcept -> LogWriter& {
+        const auto remaining = capacity_ - 1 - used_;
+        const auto count = text.size() < remaining ? text.size() : remaining;
+        for (std::size_t i = 0; i < count; ++i) {
+            storage_[used_ + i] = text[i];
+        }
+        used_ += count;
+        storage_[used_] = '\0';
+        return *this;
+    }
+
+    template <typename Integral>
+        requires std::is_integral_v<Integral>
+    auto append(Integral value) noexcept -> LogWriter& {
+        char digits[24];
+        const auto result =
+                std::to_chars(digits, digits + sizeof(digits), value);
+        return append(std::string_view(
+                digits, static_cast<std::size_t>(result.ptr - digits)));
+    }
+
+  private:
+    char* storage_;
+    std::size_t capacity_;
+    std::size_t used_ = 0;
+};
 
 enum class LogLevel : std::uint8_t {
     DEBUG,
@@ -95,6 +134,8 @@ class AsyncLogger final {
             return *this;
         }
 
+        /// Copy a message into a queue slot in place, without building an
+        /// intermediate record on the stack.
         auto log(LogLevel level, std::string_view message) noexcept -> void {
             if (state_ == nullptr) {
                 return;
@@ -108,14 +149,41 @@ class AsyncLogger final {
                 return;
             }
 
-            LogRecord record;
-            record.timestamp_us = std::chrono::duration_cast<std::chrono::microseconds>(
-                                                                std::chrono::system_clock::now().time_since_epoch())
-                                                                .count();
-            record.level = level;
-            copyText(record.component, state_->component);
-            copyText(record.message, message);
-            *slot = record;
+            slot->timestamp_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                                        std::chrono::system_clock::now().time_since_epoch())
+                                        .count();
+            slot->level = level;
+            copyText(slot->component, state_->component);
+            copyText(slot->message, message);
+            state_->queue.updateWriteIndex();
+        }
+
+        /// Format a message directly into the fixed record storage. Unlike
+        /// log(), the formatter builds the text with a LogWriter instead of a
+        /// std::string, so the call performs no heap allocation. The
+        /// formatter runs synchronously on the calling thread and must not
+        /// retain the writer.
+        template <typename Formatter>
+        auto logFixed(LogLevel level, Formatter&& formatter) noexcept -> void {
+            if (state_ == nullptr) {
+                return;
+            }
+            if (owner_ == std::thread::id{}) {
+                bindToCurrentThread();
+            }
+            if (owner_ != std::this_thread::get_id()) return;
+            auto* slot = state_->queue.tryGetNextToWriteTo();
+            if (slot == nullptr) {
+                return;
+            }
+
+            slot->timestamp_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                                        std::chrono::system_clock::now().time_since_epoch())
+                                        .count();
+            slot->level = level;
+            copyText(slot->component, state_->component);
+            LogWriter writer(slot->message.data(), kMessageCapacity);
+            formatter(writer);
             state_->queue.updateWriteIndex();
         }
 

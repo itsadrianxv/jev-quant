@@ -12,6 +12,7 @@
 
 #include "common/async_logger.h"
 #include "common/lf_queue.h"
+#include "common/mem_pool.h"
 #include "exchange/market_data/market_update.h"
 #include "exchange/order_server/client_request.h"
 #include "exchange/order_server/client_response.h"
@@ -96,6 +97,138 @@ void testQueueContract() {
     CHECK(read_second != nullptr && *read_second == 22);
     queue.updateReadIndex();
     CHECK(queue.size() == 0);
+}
+
+// A pooled type must be trivially destructible. Uncommenting the following
+// two lines must fail to compile.
+// struct WithDestructor { ~WithDestructor() {} };
+// Common::MemPool<WithDestructor> rejected_pool(1);
+
+struct MemPoolProbe {
+    std::uint64_t value = 0;
+    bool constructed = false;
+    MemPoolProbe() = default;
+    explicit MemPoolProbe(std::uint64_t initial) : value(initial), constructed(true) {}
+};
+
+void testMemPoolContract() {
+    Common::MemPool<std::uint64_t> pool(4);
+
+    // A fresh pool hands out every block at full capacity with distinct
+    // writable addresses.
+    std::array<std::uint64_t*, 4> blocks{};
+    for (std::size_t i = 0; i < blocks.size(); ++i) {
+        blocks[i] = pool.allocate();
+        CHECK(blocks[i] != nullptr);
+        *blocks[i] = i + 1;
+    }
+    for (std::size_t i = 0; i < blocks.size(); ++i) {
+        for (std::size_t j = i + 1; j < blocks.size(); ++j) {
+            CHECK(blocks[i] != blocks[j]);
+        }
+    }
+    for (std::size_t i = 0; i < blocks.size(); ++i) {
+        CHECK(*blocks[i] == i + 1);
+    }
+
+    // Deallocation returns blocks and reallocation reuses freed addresses.
+    pool.deallocate(blocks[3]);
+    pool.deallocate(blocks[2]);
+    CHECK(pool.allocate() == blocks[3]);
+    CHECK(pool.allocate() == blocks[2]);
+
+    // After the pool is exhausted, a single deallocation revives exactly one
+    // slot. The reallocated block is value-initialized by placement new, so
+    // the previous contents are gone.
+    pool.deallocate(blocks[0]);
+    CHECK(pool.allocate() == blocks[0]);
+    CHECK(*blocks[0] == 0);
+    *blocks[0] = 5;
+    CHECK(*blocks[0] == 5);
+
+    // Zero capacity is rejected at construction.
+    bool rejected_zero_capacity = false;
+    try {
+        Common::MemPool<std::uint64_t> invalid(0);
+    } catch (const std::invalid_argument&) {
+        rejected_zero_capacity = true;
+    }
+    CHECK(rejected_zero_capacity);
+}
+
+void testMemPoolPlacementConstruction() {
+    Common::MemPool<MemPoolProbe> pool(2);
+
+    auto* first = pool.allocate(11);
+    CHECK(first != nullptr);
+    CHECK(first->value == 11);
+    CHECK(first->constructed);
+
+    auto* second = pool.allocate(22);
+    CHECK(second != first);
+    CHECK(second->value == 22);
+
+    pool.deallocate(first);
+    auto* third = pool.allocate();
+    CHECK(third == first);
+    CHECK(third->value == 0);
+    CHECK(!third->constructed);
+}
+
+void testLogWriterContract() {
+    std::array<char, 32> storage{};
+    Common::LogWriter writer(storage.data(), storage.size());
+
+    // A fresh writer is an empty string, not stale bytes.
+    CHECK(std::string_view(storage.data()) == "");
+
+    writer.append("event=test id=").append(42).append(" seq=").append(static_cast<std::size_t>(7));
+    CHECK(std::string_view(storage.data()) == "event=test id=42 seq=7");
+
+    // Zero capacity yields an empty string instead of a overrun.
+    std::array<char, 1> tiny{};
+    Common::LogWriter tiny_writer(tiny.data(), tiny.size());
+    tiny_writer.append("ignored").append(1);
+    CHECK(std::string_view(tiny.data()) == "");
+
+    // Oversized text is truncated, never overrun.
+    std::array<char, 8> clipped{};
+    Common::LogWriter clipped_writer(clipped.data(), clipped.size());
+    clipped_writer.append("event=truncated_message");
+    CHECK(std::string_view(clipped.data()) == "event=t");
+    clipped_writer.append(123456);
+    CHECK(std::string_view(clipped.data()) == "event=t");
+}
+
+void testAsyncLoggerFixedBufferContract() {
+    const auto output_dir = std::filesystem::temp_directory_path() /
+                            "jev_quant_async_logger_fixed_buffer";
+    std::filesystem::remove_all(output_dir);
+
+    Common::AsyncLogger logger(output_dir, 8, std::chrono::milliseconds(1));
+    auto engine_log = logger.registerProducer("TradeEngine", "trade-engine.log");
+    logger.start();
+
+    engine_log.logFixed(Common::LogLevel::INFO, [](Common::LogWriter& out) {
+        out.append("event=client_response_consumed client_id=").append(7)
+                .append(" ticker_id=").append(0);
+    });
+    const std::string oversized(Common::AsyncLogger::kMessageCapacity + 32, 'x');
+    engine_log.logFixed(Common::LogLevel::WARN, [&](Common::LogWriter& out) {
+        out.append("fixed_prefix ").append(oversized);
+    });
+    logger.stop();
+
+    std::ifstream engine_file(output_dir / "trade-engine.log");
+    const std::string engine_text((std::istreambuf_iterator<char>(engine_file)),
+                                  std::istreambuf_iterator<char>());
+    CHECK(engine_text.find("event=client_response_consumed client_id=7 ticker_id=0") !=
+          std::string::npos);
+    CHECK(engine_text.find("fixed_prefix ") != std::string::npos);
+    // The fixed-buffer path truncates at the same record capacity.
+    CHECK(engine_text.size() < Common::AsyncLogger::kMessageCapacity + 256);
+    CHECK(engine_text.find(std::string(Common::AsyncLogger::kMessageCapacity, 'x')) ==
+          std::string::npos);
 }
 
 void testAsyncLoggerContract() {
@@ -854,6 +987,10 @@ void testSimexReadinessAndPositionGuards() {
 
 int main() {
     testSimexReadinessAndPositionGuards();
+    testMemPoolContract();
+    testMemPoolPlacementConstruction();
+    testLogWriterContract();
+    testAsyncLoggerFixedBufferContract();
     testQueueContract();
     testAsyncLoggerContract();
     testAsyncLoggerQueueOverflow();
