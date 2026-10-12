@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <sstream>
 #include <string>
 
@@ -37,6 +38,10 @@ inline auto clientResponseTypeToString(ClientResponseType type) -> std::string {
 
 struct ClientResponse {
     ClientResponseType type_ = ClientResponseType::INVALID;
+
+    /// Monotonic publish timestamp in nanoseconds, stamped by the OrderGateway
+    /// when the response enters the incoming queue. Zero means unstamped.
+    std::uint64_t published_ns_ = 0;
 
     Common::ClientId client_id_ = Common::ClientId_INVALID;
     Common::TickerId ticker_id_ = Common::TickerId_INVALID;

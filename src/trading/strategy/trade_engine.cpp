@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <sstream>
 
+#include "common/time_utils.h"
+
 namespace Trading {
 
 TradeEngine::TradeEngine(
@@ -31,6 +33,13 @@ TradeEngine::TradeEngine(
               ticker_id < Common::ME_MAX_TICKERS; ++ticker_id) {
         ticker_order_books_[ticker_id] =
                 std::make_unique<MarketOrderBook>(ticker_id);
+    }
+    if (logger_ != nullptr) {
+        // Registered at construction so records are emitted even when the
+        // engine is driven synchronously through processPending() without a
+        // worker thread. The handle binds to the calling thread on first use.
+        ttt_handle_.emplace(logger_->registerProducer(
+                "TTT", "ttt-" + std::to_string(client_id_) + ".log"));
     }
     next_jev_evaluation_at_ = std::chrono::steady_clock::now();
 }
@@ -88,6 +97,28 @@ auto TradeEngine::run() -> void {
     }
 }
 
+auto TradeEngine::recordLatency(std::string_view event, std::uint64_t evaluation_id,
+                                Common::TickerId ticker_id, std::uint64_t elapsed_ns)
+        -> void {
+    if (!ttt_handle_) return;
+    ttt_handle_->logFixed(Common::LogLevel::INFO, [&](Common::LogWriter& out) {
+        out.append("event=").append(event)
+                .append(" evaluation_id=").append(evaluation_id)
+                .append(" ticker_id=").append(ticker_id)
+                .append(" elapsed_ns=").append(elapsed_ns);
+    });
+}
+
+auto TradeEngine::recordDecisionDrop(std::string_view event,
+                                     const JevDecision& decision) -> void {
+    if (!ttt_handle_) return;
+    ttt_handle_->logFixed(Common::LogLevel::WARN, [&](Common::LogWriter& out) {
+        out.append("event=").append(event)
+                .append(" evaluation_id=").append(decision.evaluation_id_)
+                .append(" ticker_id=").append(decision.ticker_id_);
+    });
+}
+
 auto TradeEngine::processPending() -> bool {
     bool processed = false;
     processed = processClientResponses() || processed;
@@ -100,6 +131,10 @@ auto TradeEngine::processPending() -> bool {
 auto TradeEngine::processClientResponses() -> bool {
     bool processed = false;
     while (const auto* response = incoming_responses_->getNextToRead()) {
+        if (response->published_ns_ != 0) {
+            recordLatency("ttt_order_round_trip", 0, response->ticker_id_,
+                          Common::nowSteadyNs() - response->published_ns_);
+        }
         if (log_handle_) {
             log_handle_->logFixed(Common::LogLevel::INFO,
                                   [&](Common::LogWriter& out) {
@@ -124,6 +159,10 @@ auto TradeEngine::processMarketUpdates() -> bool {
         }
 
         auto& book = *ticker_order_books_.at(update->ticker_id_);
+        if (update->published_ns_ != 0) {
+            recordLatency("ttt_market_data_consumed", 0, update->ticker_id_,
+                          Common::nowSteadyNs() - update->published_ns_);
+        }
         if (log_handle_ && (verbose_market_data_ ||
                             update->type_ == Exchange::MarketUpdateType::DEPTH_SNAPSHOT)) {
             log_handle_->logFixed(Common::LogLevel::DEBUG,
@@ -145,6 +184,11 @@ auto TradeEngine::processMarketUpdates() -> bool {
 auto TradeEngine::processJevDecisions() -> bool {
     bool processed = false;
     while (const auto* decision = incoming_jev_decisions_->getNextToRead()) {
+        if (decision->enqueued_ns_ != 0) {
+            recordLatency("ttt_decision_consumed", decision->evaluation_id_,
+                          decision->ticker_id_,
+                          Common::nowSteadyNs() - decision->enqueued_ns_);
+        }
         if (log_handle_) {
             log_handle_->logFixed(Common::LogLevel::INFO,
                                   [&](Common::LogWriter& out) {
@@ -193,7 +237,10 @@ auto TradeEngine::handleMarketUpdate(const Exchange::MarketUpdate& update,
 }
 
 auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
-    if (single_order_venue_ && !venue_ready_.load()) return;
+    if (single_order_venue_ && !venue_ready_.load()) {
+        recordDecisionDrop("ttt_decision_blocked_not_ready", decision);
+        return;
+    }
     if (decision.ticker_id_ >= latest_evaluation_ids_.size() ||
             decision.evaluation_id_ == 0 ||
             decision.evaluation_id_ !=
@@ -207,20 +254,31 @@ auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
                                               .append(decision.evaluation_id_);
                                   });
         }
+        recordDecisionDrop("ttt_decision_stale_drop", decision);
         return;
     }
 
-    if (!feature_engines_.at(decision.ticker_id_).features().valid_) return;
+    if (!feature_engines_.at(decision.ticker_id_).features().valid_) {
+        recordDecisionDrop("ttt_decision_blocked_no_features", decision);
+        return;
+    }
 
     if (single_order_venue_) {
         for (const auto side : {Common::Side::BUY, Common::Side::SELL}) {
             const auto state = order_manager_.getOrder(decision.ticker_id_, side).order_state_;
-            if (state != OMOrderState::INVALID && state != OMOrderState::DEAD) return;
+            if (state != OMOrderState::INVALID && state != OMOrderState::DEAD) {
+                recordDecisionDrop("ttt_decision_blocked_order_working", decision);
+                return;
+            }
         }
         if (decision.intent_ == JevIntent::OPEN &&
-            position_keeper_.getPositionInfo(decision.ticker_id_).position_ != 0) return;
+            position_keeper_.getPositionInfo(decision.ticker_id_).position_ != 0) {
+            recordDecisionDrop("ttt_decision_blocked_position_open", decision);
+            return;
+        }
     }
 
+    const auto decision_to_order_start_ns = Common::nowSteadyNs();
     const auto& book = *ticker_order_books_.at(decision.ticker_id_);
     const auto* bbo = book.getBBO();
     if (decision.intent_ == JevIntent::OPEN) {
@@ -236,6 +294,7 @@ auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
             if ((position > 0 && side == Common::Side::SELL) ||
                 (position < 0 && side == Common::Side::BUY) || outstanding) {
                 if (log_handle_) log_handle_->log(Common::LogLevel::WARN, "event=opposite_open_blocked");
+                recordDecisionDrop("ttt_decision_blocked_opposite_open", decision);
                 onJevDecision(decision);
                 return;
             }
@@ -263,6 +322,9 @@ auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
             }
         }
     }
+    recordLatency("ttt_decision_to_order", decision.evaluation_id_,
+                  decision.ticker_id_,
+                  Common::nowSteadyNs() - decision_to_order_start_ns);
     onJevDecision(decision);
 }
 

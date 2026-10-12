@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <sstream>
 #include <string>
 
@@ -28,6 +29,10 @@ inline auto clientRequestTypeToString(ClientRequestType type) -> std::string {
 
 struct ClientRequest {
     ClientRequestType type_ = ClientRequestType::INVALID;
+
+    /// Monotonic enqueue timestamp in nanoseconds, stamped by the TradeEngine
+    /// when the request enters the outgoing queue. Zero means unstamped.
+    std::uint64_t enqueued_ns_ = 0;
 
     Common::ClientId client_id_ = Common::ClientId_INVALID;
     Common::TickerId ticker_id_ = Common::TickerId_INVALID;

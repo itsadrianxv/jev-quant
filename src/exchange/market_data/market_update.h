@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <sstream>
 #include <string>
 
@@ -62,6 +63,10 @@ struct DepthSnapshot {
 
 struct MarketUpdate {
     MarketUpdateType type_ = MarketUpdateType::INVALID;
+
+    /// Monotonic publish timestamp in nanoseconds, stamped by the producer
+    /// at the market-data queue boundary. Zero means unstamped.
+    std::uint64_t published_ns_ = 0;
 
     Common::OrderId order_id_ = Common::OrderId_INVALID;
     Common::TickerId ticker_id_ = Common::TickerId_INVALID;

@@ -3,6 +3,8 @@
 #include <exception>
 #include <stdexcept>
 
+#include "common/time_utils.h"
+
 namespace Trading {
 
 OrderGateway::~OrderGateway() {
@@ -101,6 +103,7 @@ auto OrderGateway::publishClientResponse(
         std::terminate();
     }
     *slot = response;
+    slot->published_ns_ = Common::nowSteadyNs();
     incoming_responses_->updateWriteIndex();
     ++next_exp_seq_num_;
     if (log_handle_) {

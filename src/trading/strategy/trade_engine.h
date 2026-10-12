@@ -4,9 +4,11 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <stdexcept>
+#include <string_view>
 #include <thread>
 #include <optional>
 #include <mutex>
@@ -149,6 +151,15 @@ class TradeEngine final {
     auto handleMarketUpdate(const Exchange::MarketUpdate& update,
                                                     const MarketOrderBook& book) -> void;
     auto handleJevDecision(const JevDecision& decision) -> void;
+    auto recordLatency(std::string_view event, std::uint64_t evaluation_id,
+                       Common::TickerId ticker_id, std::uint64_t elapsed_ns)
+            -> void;
+    auto recordDecisionDrop(std::string_view event, const JevDecision& decision)
+            -> void;
+
+    /// Dedicated producer for tick-to-trade latency records. Its file is the
+    /// single output consumed by offline percentile analysis.
+    std::optional<Common::AsyncLogger::ProducerHandle> ttt_handle_;
 
     const Common::ClientId client_id_ = Common::ClientId_INVALID;
     PositionKeeper position_keeper_;

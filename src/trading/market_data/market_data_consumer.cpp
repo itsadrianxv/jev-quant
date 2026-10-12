@@ -3,6 +3,8 @@
 #include <exception>
 #include <stdexcept>
 
+#include "common/time_utils.h"
+
 namespace Trading {
 
 auto MarketDataConsumer::publishMarketUpdate(
@@ -15,6 +17,7 @@ auto MarketDataConsumer::publishMarketUpdate(
         std::terminate();
     }
     *slot = update;
+    slot->published_ns_ = Common::nowSteadyNs();
     market_updates_->updateWriteIndex();
     ++local_receive_seq_num_;
     if (log_handle_ && verbose_market_data_) {

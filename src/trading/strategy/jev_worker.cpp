@@ -3,6 +3,8 @@
 #include <exception>
 #include <stdexcept>
 
+#include "common/time_utils.h"
+
 namespace Trading {
 
 JevWorker::~JevWorker() {
@@ -79,6 +81,7 @@ auto JevWorker::processPending() -> bool {
             std::terminate();
         }
         *slot = decision;
+        slot->enqueued_ns_ = Common::nowSteadyNs();
         outgoing_decisions_->updateWriteIndex();
         if (log_handle_) {
             log_handle_->log(Common::LogLevel::INFO,
