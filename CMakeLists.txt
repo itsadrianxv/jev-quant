@@ -22,6 +22,7 @@ add_library(jev_trading_core STATIC
         src/trading/strategy/order_manager.cpp
         src/trading/strategy/trade_engine.cpp
         src/trading/venue/venue_adapter.cpp
+        src/trading/venue/binance_depth_book.cpp
         src/trading/venue/binance_websocket_stream.cpp
         src/tools/jev_variant.cpp
 )
