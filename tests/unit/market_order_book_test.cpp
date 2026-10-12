@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <cstdint>
+#include <map>
 #include <stdexcept>
+#include <unordered_map>
 
 #include "exchange/market_data/market_update.h"
 #include "trading/strategy/market_order_book.h"
@@ -324,6 +327,147 @@ TEST(MarketOrderBookTest, ErasingAMiddleCollidingOrderKeepsProbeChainOrdersReach
     book.onMarketUpdate(makeUpdate(MarketUpdateType::CANCEL, 1, Side::INVALID, 0, 0));
     expectBbo(book, Common::Price_INVALID, Common::Qty_INVALID,
               Common::Price_INVALID, Common::Qty_INVALID);
+}
+
+TEST(MarketOrderBookTest, MatchesTheReferenceModelUnderSeededRandomOperations) {
+    // Mirror of the pre-pooled ordered-map book behavior, compared op by op
+    // under a fixed seed so the sequence is fully deterministic.
+    struct ModelOrder {
+        Side side_ = Side::INVALID;
+        Price price_ = Common::Price_INVALID;
+        Qty qty_ = 0;
+    };
+    std::unordered_map<OrderId, ModelOrder> orders;
+    std::map<Price, Qty, std::greater<Price>> bids;
+    std::map<Price, Qty> asks;
+
+    const auto add_level = [&](Side side, Price price, Qty qty) {
+        if (side == Side::BUY) {
+            bids[price] += qty;
+        } else {
+            asks[price] += qty;
+        }
+    };
+    const auto remove_level = [&](Side side, Price price, Qty qty) {
+        if (side == Side::BUY) {
+            const auto level = bids.find(price);
+            if (level == bids.end()) {
+                return;
+            }
+            if (level->second <= qty) {
+                bids.erase(level);
+            } else {
+                level->second -= qty;
+            }
+        } else {
+            const auto level = asks.find(price);
+            if (level == asks.end()) {
+                return;
+            }
+            if (level->second <= qty) {
+                asks.erase(level);
+            } else {
+                level->second -= qty;
+            }
+        }
+    };
+    const auto cancel_order = [&](OrderId order_id) {
+        const auto order = orders.find(order_id);
+        if (order == orders.end()) {
+            return;
+        }
+        remove_level(order->second.side_, order->second.price_, order->second.qty_);
+        orders.erase(order);
+    };
+
+    MarketOrderBook book(0);
+    int operation = 0;
+
+    const auto apply = [&](MarketUpdateType type, OrderId order_id, Side side,
+                           Price price, Qty qty) {
+        ++operation;
+        MarketUpdate update;
+        update.type_ = type;
+        update.order_id_ = order_id;
+        update.side_ = side;
+        update.price_ = price;
+        update.qty_ = qty;
+
+        switch (type) {
+            case MarketUpdateType::ADD:
+                cancel_order(order_id);
+                orders[order_id] = {side, price, qty};
+                add_level(side, price, qty);
+                break;
+            case MarketUpdateType::MODIFY: {
+                const auto order = orders.find(order_id);
+                if (order == orders.end()) {
+                    break;
+                }
+                auto& resting = order->second;
+                if (resting.side_ != side || resting.price_ != price) {
+                    remove_level(resting.side_, resting.price_, resting.qty_);
+                    resting.side_ = side;
+                    resting.price_ = price;
+                    add_level(resting.side_, resting.price_, qty);
+                } else if (qty >= resting.qty_) {
+                    add_level(resting.side_, resting.price_, qty - resting.qty_);
+                } else {
+                    remove_level(resting.side_, resting.price_, resting.qty_ - qty);
+                }
+                resting.qty_ = qty;
+                break;
+            }
+            case MarketUpdateType::CANCEL:
+                cancel_order(order_id);
+                break;
+            case MarketUpdateType::CLEAR:
+                orders.clear();
+                bids.clear();
+                asks.clear();
+                break;
+            default:
+                break;
+        }
+
+        book.onMarketUpdate(update);
+
+        const Trading::BBO* bbo = book.getBBO();
+        const auto bid = bids.begin();
+        const auto ask = asks.begin();
+        EXPECT_EQ(bid == bids.end() ? Common::Price_INVALID : bid->first, bbo->bid_price_)
+                << "bid price diverged at operation " << operation;
+        EXPECT_EQ(bid == bids.end() ? Common::Qty_INVALID : bid->second, bbo->bid_qty_)
+                << "bid qty diverged at operation " << operation;
+        EXPECT_EQ(ask == asks.end() ? Common::Price_INVALID : ask->first, bbo->ask_price_)
+                << "ask price diverged at operation " << operation;
+        EXPECT_EQ(ask == asks.end() ? Common::Qty_INVALID : ask->second, bbo->ask_qty_)
+                << "ask qty diverged at operation " << operation;
+    };
+
+    std::uint64_t state = 0x9E3779B97F4A7C15ull;
+    const auto next = [&state]() {
+        state = state * 6364136223846793005ull + 1442695040888963407ull;
+        return state >> 33;
+    };
+    for (int i = 0; i < 20000; ++i) {
+        const auto roll = next() % 100;
+        const auto order_id = static_cast<OrderId>(next() % 64);
+        const auto side = (next() % 2) == 0 ? Side::BUY : Side::SELL;
+        const auto price = static_cast<Price>(90 + next() % 20);
+        const auto qty = static_cast<Qty>(1 + next() % 5);
+        if (roll < 3) {
+            apply(MarketUpdateType::TRADE, order_id, side, price, qty);
+        } else if (roll < 48) {
+            apply(MarketUpdateType::ADD, order_id, side, price, qty);
+        } else if (roll < 78) {
+            apply(MarketUpdateType::MODIFY, order_id, side, price, qty);
+        } else if (roll < 96) {
+            apply(MarketUpdateType::CANCEL, order_id, side, price, qty);
+        } else {
+            apply(MarketUpdateType::CLEAR, 0, Side::INVALID, 0, 0);
+        }
+    }
 }
 
 TEST(MarketOrderBookTest, ErasingAMiddleCollidingLevelKeepsProbeChainLevelsReachable) {

@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cstdint>
+
 #include <nlohmann/json.hpp>
 #include <string>
 
@@ -81,6 +83,41 @@ TEST(JevHttpRequestBodyTest, LiveWorkingOrdersShipTheirAttributes) {
     EXPECT_EQ("LIMIT", shipped.at("order_type").get<std::string>());
     EXPECT_EQ("OPEN", shipped.at("offset").get<std::string>());
     EXPECT_EQ("LIVE", shipped.at("state").get<std::string>());
+}
+
+TEST(JevHttpRequestBodyTest, RequestCarriesEvaluationIdAndOmitsTheEndpoint) {
+    const Json request = buildRequest(makeState());
+
+    EXPECT_EQ(9u, request.at("state").at("evaluation_id").get<std::uint64_t>());
+    EXPECT_FALSE(request.contains("endpoint"));
+}
+
+TEST(JevHttpRequestBodyTest, EvaluationStateShipsScaledFeaturesAndEssentialKeys) {
+    auto state = makeState();
+    state.price_scale_ = 100.0;
+    state.market_features_.valid_ = true;
+    state.market_features_.mid_price_ = 100.5;
+    state.market_features_.relative_spread_bps_ = 10000.0 / 100.5;
+    state.market_features_.top_of_book_total_qty_ = 8;
+    state.market_features_.top_of_book_qty_imbalance_ = -0.5;
+
+    const Json request = buildRequest(state);
+    const auto& shipped = request.at("state");
+
+    EXPECT_TRUE(shipped.contains("position"));
+    EXPECT_TRUE(shipped.contains("risk"));
+    EXPECT_TRUE(shipped.contains("account"));
+
+    const auto& depth = shipped.at("depth");
+    EXPECT_FALSE(depth.contains("bids"));
+    EXPECT_FALSE(depth.contains("asks"));
+    EXPECT_TRUE(depth.contains("last_price"));
+
+    const auto& features = shipped.at("features");
+    EXPECT_DOUBLE_EQ(1.005, features.at("mid_price").get<double>());
+    EXPECT_EQ(8u, features.at("top_of_book_total_qty").get<std::uint64_t>());
+    EXPECT_DOUBLE_EQ(-0.5, features.at("top_of_book_qty_imbalance").get<double>());
+    EXPECT_NEAR(10000.0 / 100.5, features.at("relative_spread_bps").get<double>(), 1e-9);
 }
 
 TEST(JevHttpRequestBodyTest, DeadWorkingOrdersAreOmitted) {

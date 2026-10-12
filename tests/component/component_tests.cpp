@@ -176,6 +176,12 @@ TEST(FeatureSnapshotTest, PublishesValidSnapshotsAndRecoversAcrossVenueModes) {
         const auto captured = *evaluations.getNextToRead();
         evaluations.updateReadIndex();
 
+        writeMarketUpdate(harness->market_updates, 1, 200, 202);
+        engine.processPending();
+        EXPECT_DOUBLE_EQ(201.0, engine.buildJevEvaluationState(1, 100).market_features_.mid_price_);
+        EXPECT_DOUBLE_EQ(100.5, engine.buildJevEvaluationState(0, 101).market_features_.mid_price_);
+        while (evaluations.getNextToRead()) evaluations.updateReadIndex();
+
         publish(100, Common::Price_INVALID);
         EXPECT_EQ(0u, evaluations.size());
         EXPECT_FALSE(engine.acceptsEvaluation(captured));
@@ -190,8 +196,11 @@ TEST(FeatureSnapshotTest, PublishesValidSnapshotsAndRecoversAcrossVenueModes) {
 
         publish(110, 112);
         ASSERT_EQ(1u, evaluations.size());
-        EXPECT_EQ(captured.evaluation_id_ + 1, evaluations.getNextToRead()->evaluation_id_);
+        // The drained ticker-1 snapshot consumed one evaluation id between
+        // the captured state and the fresh ticker-0 snapshot.
+        EXPECT_EQ(captured.evaluation_id_ + 2, evaluations.getNextToRead()->evaluation_id_);
         EXPECT_EQ(111, evaluations.getNextToRead()->market_features_.mid_price_);
+        EXPECT_DOUBLE_EQ(100.5, captured.market_features_.mid_price_);
         evaluations.updateReadIndex();
 
         writeDecision(harness->decisions, captured.evaluation_id_);

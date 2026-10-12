@@ -166,12 +166,6 @@ function(jev_add_gtest_test name)
             DISCOVERY_TIMEOUT 120)
 endfunction()
 
-add_executable(contract_tests tests/contract_tests.cpp)
-target_link_libraries(contract_tests PRIVATE jev_trading_core)
-target_compile_options(contract_tests PRIVATE -Wall -Wextra -Wpedantic)
-
-add_test(NAME contract_tests COMMAND contract_tests)
-
 # Deterministic participant-pipeline bench. The smoke drives a small fixed
 # load in-process with the mock decision provider (no network) and asserts
 # the per-segment TTT summary is printed at exit.
@@ -215,7 +209,8 @@ tests/unit/lf_queue_test.cpp
                 tests/unit/jev_decision_request_test.cpp
                 tests/unit/jev_decision_parser_test.cpp
                 tests/unit/jev_variant_test.cpp
-                tests/unit/binance_um_futures_adapter_test.cpp)
+                tests/unit/binance_um_futures_adapter_test.cpp
+                tests/unit/message_contract_test.cpp)
 jev_add_gtest_test(component_tests LABEL component
         SOURCES tests/component/component_tests.cpp
                 tests/component/decision_matrix_test.cpp
