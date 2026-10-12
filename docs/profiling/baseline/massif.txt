@@ -1,0 +1,606 @@
+--------------------------------------------------------------------------------
+Command:            build/Release-profile/jev_bench --updates 20000 --out /tmp/tmp.PzoCNqq4NR/massif-ttt
+Massif arguments:   --massif-out-file=/tmp/tmp.PzoCNqq4NR/massif.out
+ms_print arguments: /tmp/tmp.PzoCNqq4NR/massif.out
+--------------------------------------------------------------------------------
+
+
+    MB
+45.98^                                                                       :
+     |#::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::@
+     |#                                                                      @
+     |#                                                                      @
+     |#                                                                      @
+     |#                                                                      @
+     |#                                                                      @
+     |#                                                                      @
+     |#                                                                      @
+     |#                                                                      @
+     |#                                                                      @
+     |#                                                                      @
+     |#                                                                      @
+     |#                                                                      @
+     |#                                                                      @
+     |#                                                                      @
+     |#                                                                      @
+     |#                                                                      @
+     |#                                                                      @
+     |#                                                                      @
+   0 +----------------------------------------------------------------------->Gi
+     0                                                                   14.35
+
+Number of snapshots: 94
+ Detailed snapshots: [2, 12, 20 (peak), 53, 63, 73, 83, 93]
+
+--------------------------------------------------------------------------------
+  n        time(i)         total(B)   useful-heap(B) extra-heap(B)    stacks(B)
+--------------------------------------------------------------------------------
+  0              0                0                0             0            0
+  1      2,038,931           73,736           73,728             8            0
+  2      2,827,173        4,572,520        4,572,334           186            0
+100.00% (4,572,334B) (heap allocation functions) malloc/new/new[], --alloc-fns, etc.
+->45.86% (2,097,152B) 0x1294B4: allocate (new_allocator.h:151)
+| ->45.86% (2,097,152B) 0x1294B4: allocate (allocator.h:198)
+|   ->45.86% (2,097,152B) 0x1294B4: allocate (alloc_traits.h:482)
+|     ->45.86% (2,097,152B) 0x1294B4: _M_allocate (stl_vector.h:381)
+|       ->45.86% (2,097,152B) 0x1294B4: _M_create_storage (stl_vector.h:398)
+|         ->45.86% (2,097,152B) 0x1294B4: _Vector_base (stl_vector.h:335)
+|           ->45.86% (2,097,152B) 0x1294B4: vector (stl_vector.h:571)
+|             ->45.86% (2,097,152B) 0x1294B4: MemPool (mem_pool.h:49)
+|               ->45.86% (2,097,152B) 0x1294B4: MarketOrderBook (market_order_book.h:93)
+|                 ->45.86% (2,097,152B) 0x1294B4: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->45.86% (2,097,152B) 0x1294B4: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->45.86% (2,097,152B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->25.81% (1,180,040B) 0x1293D8: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+| ->25.81% (1,180,040B) 0x1293D8: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|   ->25.81% (1,180,040B) 0x10E85A: main (jev_bench.cpp:191)
+|     
+->09.32% (425,984B) 0x10E64C: allocate (new_allocator.h:151)
+| ->09.32% (425,984B) 0x10E64C: allocate (allocator.h:198)
+|   ->09.32% (425,984B) 0x10E64C: allocate (alloc_traits.h:482)
+|     ->09.32% (425,984B) 0x10E64C: _M_allocate (stl_vector.h:381)
+|       ->09.32% (425,984B) 0x10E64C: _M_create_storage (stl_vector.h:398)
+|         ->09.32% (425,984B) 0x10E64C: _Vector_base (stl_vector.h:335)
+|           ->09.32% (425,984B) 0x10E64C: vector (stl_vector.h:557)
+|             ->09.32% (425,984B) 0x10E64C: LFQueue (lf_queue.h:22)
+|               ->09.32% (425,984B) 0x10E64C: main (jev_bench.cpp:186)
+|                 
+->05.73% (262,144B) 0x10E48D: allocate (new_allocator.h:151)
+| ->05.73% (262,144B) 0x10E48D: allocate (allocator.h:198)
+|   ->05.73% (262,144B) 0x10E48D: allocate (alloc_traits.h:482)
+|     ->05.73% (262,144B) 0x10E48D: _M_allocate (stl_vector.h:381)
+|       ->05.73% (262,144B) 0x10E48D: _M_create_storage (stl_vector.h:398)
+|         ->05.73% (262,144B) 0x10E48D: _Vector_base (stl_vector.h:335)
+|           ->05.73% (262,144B) 0x10E48D: vector (stl_vector.h:557)
+|             ->05.73% (262,144B) 0x10E48D: LFQueue (lf_queue.h:22)
+|               ->05.73% (262,144B) 0x10E48D: main (jev_bench.cpp:184)
+|                 
+->03.58% (163,840B) 0x129532: allocate (new_allocator.h:151)
+| ->03.58% (163,840B) 0x129532: allocate (allocator.h:198)
+|   ->03.58% (163,840B) 0x129532: allocate (alloc_traits.h:482)
+|     ->03.58% (163,840B) 0x129532: _M_allocate (stl_vector.h:381)
+|       ->03.58% (163,840B) 0x129532: _M_create_storage (stl_vector.h:398)
+|         ->03.58% (163,840B) 0x129532: _Vector_base (stl_vector.h:335)
+|           ->03.58% (163,840B) 0x129532: vector (stl_vector.h:571)
+|             ->03.58% (163,840B) 0x129532: MemPool (mem_pool.h:49)
+|               ->03.58% (163,840B) 0x129532: MarketOrderBook (market_order_book.h:94)
+|                 ->03.58% (163,840B) 0x129532: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->03.58% (163,840B) 0x129532: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->03.58% (163,840B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->03.58% (163,840B) 0x1295AE: allocate (new_allocator.h:151)
+| ->03.58% (163,840B) 0x1295AE: allocate (allocator.h:198)
+|   ->03.58% (163,840B) 0x1295AE: allocate (alloc_traits.h:482)
+|     ->03.58% (163,840B) 0x1295AE: _M_allocate (stl_vector.h:381)
+|       ->03.58% (163,840B) 0x1295AE: _M_create_storage (stl_vector.h:398)
+|         ->03.58% (163,840B) 0x1295AE: _Vector_base (stl_vector.h:335)
+|           ->03.58% (163,840B) 0x1295AE: vector (stl_vector.h:571)
+|             ->03.58% (163,840B) 0x1295AE: MemPool (mem_pool.h:49)
+|               ->03.58% (163,840B) 0x1295AE: MarketOrderBook (market_order_book.h:95)
+|                 ->03.58% (163,840B) 0x1295AE: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->03.58% (163,840B) 0x1295AE: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->03.58% (163,840B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->01.61% (73,728B) 0x10E408: allocate (new_allocator.h:151)
+| ->01.61% (73,728B) 0x10E408: allocate (allocator.h:198)
+|   ->01.61% (73,728B) 0x10E408: allocate (alloc_traits.h:482)
+|     ->01.61% (73,728B) 0x10E408: _M_allocate (stl_vector.h:381)
+|       ->01.61% (73,728B) 0x10E408: _M_create_storage (stl_vector.h:398)
+|         ->01.61% (73,728B) 0x10E408: _Vector_base (stl_vector.h:335)
+|           ->01.61% (73,728B) 0x10E408: vector (stl_vector.h:557)
+|             ->01.61% (73,728B) 0x10E408: LFQueue (lf_queue.h:22)
+|               ->01.61% (73,728B) 0x10E408: main (jev_bench.cpp:183)
+|                 
+->01.61% (73,728B) 0x10E5D1: allocate (new_allocator.h:151)
+| ->01.61% (73,728B) 0x10E5D1: allocate (allocator.h:198)
+|   ->01.61% (73,728B) 0x10E5D1: allocate (alloc_traits.h:482)
+|     ->01.61% (73,728B) 0x10E5D1: _M_allocate (stl_vector.h:381)
+|       ->01.61% (73,728B) 0x10E5D1: _M_create_storage (stl_vector.h:398)
+|         ->01.61% (73,728B) 0x10E5D1: _Vector_base (stl_vector.h:335)
+|           ->01.61% (73,728B) 0x10E5D1: vector (stl_vector.h:557)
+|             ->01.61% (73,728B) 0x10E5D1: LFQueue (lf_queue.h:22)
+|               ->01.61% (73,728B) 0x10E5D1: main (jev_bench.cpp:185)
+|                 
+->01.61% (73,728B) 0x491038E: ??? (in /usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.33)
+| ->01.61% (73,728B) 0x400571E: call_init.part.0 (dl-init.c:74)
+|   ->01.61% (73,728B) 0x4005823: call_init (dl-init.c:120)
+|     ->01.61% (73,728B) 0x4005823: _dl_init (dl-init.c:121)
+|       ->01.61% (73,728B) 0x401F59F: ??? (in /usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2)
+|         ->01.61% (73,728B) 0x4: ???
+|           ->01.61% (73,728B) 0x1FFF00047E: ???
+|             ->01.61% (73,728B) 0x1FFF00049E: ???
+|               ->01.61% (73,728B) 0x1FFF0004A8: ???
+|                 ->01.61% (73,728B) 0x1FFF0004AE: ???
+|                   ->01.61% (73,728B) 0x1FFF0004B4: ???
+|                     
+->01.25% (57,344B) 0x10E36B: allocate (new_allocator.h:151)
+| ->01.25% (57,344B) 0x10E36B: allocate (allocator.h:198)
+|   ->01.25% (57,344B) 0x10E36B: allocate (alloc_traits.h:482)
+|     ->01.25% (57,344B) 0x10E36B: _M_allocate (stl_vector.h:381)
+|       ->01.25% (57,344B) 0x10E36B: _M_create_storage (stl_vector.h:398)
+|         ->01.25% (57,344B) 0x10E36B: _Vector_base (stl_vector.h:335)
+|           ->01.25% (57,344B) 0x10E36B: vector (stl_vector.h:557)
+|             ->01.25% (57,344B) 0x10E36B: LFQueue (lf_queue.h:22)
+|               ->01.25% (57,344B) 0x10E36B: main (jev_bench.cpp:182)
+|                 
+->00.02% (806B) in 1+ places, all below ms_print's threshold (01.00%)
+
+--------------------------------------------------------------------------------
+  n        time(i)         total(B)   useful-heap(B) extra-heap(B)    stacks(B)
+--------------------------------------------------------------------------------
+  3      4,043,808        5,752,576        5,752,374           202            0
+  4      4,605,116        8,177,432        8,177,206           226            0
+  5      5,821,751        9,357,488        9,357,246           242            0
+  6      6,383,059       11,782,344       11,782,078           266            0
+  7      7,599,694       12,962,400       12,962,118           282            0
+  8      8,161,002       15,387,256       15,386,950           306            0
+  9      9,377,637       16,567,312       16,566,990           322            0
+ 10      9,938,945       18,992,168       18,991,822           346            0
+ 11     11,155,580       20,172,224       20,171,862           362            0
+ 12     11,716,888       22,597,080       22,596,694           386            0
+100.00% (22,596,694B) (heap allocation functions) malloc/new/new[], --alloc-fns, etc.
+->55.68% (12,582,912B) 0x1294B4: allocate (new_allocator.h:151)
+| ->55.68% (12,582,912B) 0x1294B4: allocate (allocator.h:198)
+|   ->55.68% (12,582,912B) 0x1294B4: allocate (alloc_traits.h:482)
+|     ->55.68% (12,582,912B) 0x1294B4: _M_allocate (stl_vector.h:381)
+|       ->55.68% (12,582,912B) 0x1294B4: _M_create_storage (stl_vector.h:398)
+|         ->55.68% (12,582,912B) 0x1294B4: _Vector_base (stl_vector.h:335)
+|           ->55.68% (12,582,912B) 0x1294B4: vector (stl_vector.h:571)
+|             ->55.68% (12,582,912B) 0x1294B4: MemPool (mem_pool.h:49)
+|               ->55.68% (12,582,912B) 0x1294B4: MarketOrderBook (market_order_book.h:93)
+|                 ->55.68% (12,582,912B) 0x1294B4: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->55.68% (12,582,912B) 0x1294B4: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->55.68% (12,582,912B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->31.33% (7,080,240B) 0x1293D8: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+| ->31.33% (7,080,240B) 0x1293D8: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|   ->31.33% (7,080,240B) 0x10E85A: main (jev_bench.cpp:191)
+|     
+->04.35% (983,040B) 0x129532: allocate (new_allocator.h:151)
+| ->04.35% (983,040B) 0x129532: allocate (allocator.h:198)
+|   ->04.35% (983,040B) 0x129532: allocate (alloc_traits.h:482)
+|     ->04.35% (983,040B) 0x129532: _M_allocate (stl_vector.h:381)
+|       ->04.35% (983,040B) 0x129532: _M_create_storage (stl_vector.h:398)
+|         ->04.35% (983,040B) 0x129532: _Vector_base (stl_vector.h:335)
+|           ->04.35% (983,040B) 0x129532: vector (stl_vector.h:571)
+|             ->04.35% (983,040B) 0x129532: MemPool (mem_pool.h:49)
+|               ->04.35% (983,040B) 0x129532: MarketOrderBook (market_order_book.h:94)
+|                 ->04.35% (983,040B) 0x129532: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->04.35% (983,040B) 0x129532: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->04.35% (983,040B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->04.35% (983,040B) 0x1295AE: allocate (new_allocator.h:151)
+| ->04.35% (983,040B) 0x1295AE: allocate (allocator.h:198)
+|   ->04.35% (983,040B) 0x1295AE: allocate (alloc_traits.h:482)
+|     ->04.35% (983,040B) 0x1295AE: _M_allocate (stl_vector.h:381)
+|       ->04.35% (983,040B) 0x1295AE: _M_create_storage (stl_vector.h:398)
+|         ->04.35% (983,040B) 0x1295AE: _Vector_base (stl_vector.h:335)
+|           ->04.35% (983,040B) 0x1295AE: vector (stl_vector.h:571)
+|             ->04.35% (983,040B) 0x1295AE: MemPool (mem_pool.h:49)
+|               ->04.35% (983,040B) 0x1295AE: MarketOrderBook (market_order_book.h:95)
+|                 ->04.35% (983,040B) 0x1295AE: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->04.35% (983,040B) 0x1295AE: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->04.35% (983,040B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->01.89% (425,984B) 0x10E64C: allocate (new_allocator.h:151)
+| ->01.89% (425,984B) 0x10E64C: allocate (allocator.h:198)
+|   ->01.89% (425,984B) 0x10E64C: allocate (alloc_traits.h:482)
+|     ->01.89% (425,984B) 0x10E64C: _M_allocate (stl_vector.h:381)
+|       ->01.89% (425,984B) 0x10E64C: _M_create_storage (stl_vector.h:398)
+|         ->01.89% (425,984B) 0x10E64C: _Vector_base (stl_vector.h:335)
+|           ->01.89% (425,984B) 0x10E64C: vector (stl_vector.h:557)
+|             ->01.89% (425,984B) 0x10E64C: LFQueue (lf_queue.h:22)
+|               ->01.89% (425,984B) 0x10E64C: main (jev_bench.cpp:186)
+|                 
+->01.24% (279,334B) in 17 places, all below massif's threshold (1.00%)
+| 
+->01.16% (262,144B) 0x10E48D: allocate (new_allocator.h:151)
+  ->01.16% (262,144B) 0x10E48D: allocate (allocator.h:198)
+    ->01.16% (262,144B) 0x10E48D: allocate (alloc_traits.h:482)
+      ->01.16% (262,144B) 0x10E48D: _M_allocate (stl_vector.h:381)
+        ->01.16% (262,144B) 0x10E48D: _M_create_storage (stl_vector.h:398)
+          ->01.16% (262,144B) 0x10E48D: _Vector_base (stl_vector.h:335)
+            ->01.16% (262,144B) 0x10E48D: vector (stl_vector.h:557)
+              ->01.16% (262,144B) 0x10E48D: LFQueue (lf_queue.h:22)
+                ->01.16% (262,144B) 0x10E48D: main (jev_bench.cpp:184)
+                  
+--------------------------------------------------------------------------------
+  n        time(i)         total(B)   useful-heap(B) extra-heap(B)    stacks(B)
+--------------------------------------------------------------------------------
+ 13     12,933,523       23,777,136       23,776,734           402            0
+ 14     13,494,831       26,201,992       26,201,566           426            0
+ 15     14,711,466       27,382,048       27,381,606           442            0
+ 16     15,272,774       29,806,904       29,806,438           466            0
+ 17     16,490,022       29,806,960       29,806,469           491            0
+ 18     16,492,293       47,899,880       47,895,331         4,549            0
+ 19     21,067,765       47,900,368       47,895,803         4,565            0
+ 20     21,070,432       47,908,568       47,903,995         4,573            0
+99.99% (47,903,995B) (heap allocation functions) malloc/new/new[], --alloc-fns, etc.
+->37.76% (18,087,936B) 0x117A44: allocate (new_allocator.h:151)
+| ->37.76% (18,087,936B) 0x117A44: allocate (allocator.h:198)
+|   ->37.76% (18,087,936B) 0x117A44: allocate (alloc_traits.h:482)
+|     ->37.76% (18,087,936B) 0x117A44: _M_allocate (stl_vector.h:381)
+|       ->37.76% (18,087,936B) 0x117A44: _M_create_storage (stl_vector.h:398)
+|         ->37.76% (18,087,936B) 0x117A44: _Vector_base (stl_vector.h:335)
+|           ->37.76% (18,087,936B) 0x117A44: vector (stl_vector.h:557)
+|             ->37.76% (18,087,936B) 0x117A44: LFQueue (lf_queue.h:22)
+|               ->37.76% (18,087,936B) 0x117A44: ProducerState (async_logger.h:101)
+|                 ->37.76% (18,087,936B) 0x117A44: make_unique<Common::AsyncLogger::ProducerState, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::filesystem::__cxx11::path, long unsigned int&> (unique_ptr.h:1070)
+|                   ->37.76% (18,087,936B) 0x117A44: Common::AsyncLogger::registerProducer(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) (async_logger.h:248)
+|                     ->37.76% (18,087,936B) 0x129B3A: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:41)
+|                       ->37.76% (18,087,936B) 0x10E85A: main (jev_bench.cpp:191)
+|                         
+->35.02% (16,777,216B) 0x1294B4: allocate (new_allocator.h:151)
+| ->35.02% (16,777,216B) 0x1294B4: allocate (allocator.h:198)
+|   ->35.02% (16,777,216B) 0x1294B4: allocate (alloc_traits.h:482)
+|     ->35.02% (16,777,216B) 0x1294B4: _M_allocate (stl_vector.h:381)
+|       ->35.02% (16,777,216B) 0x1294B4: _M_create_storage (stl_vector.h:398)
+|         ->35.02% (16,777,216B) 0x1294B4: _Vector_base (stl_vector.h:335)
+|           ->35.02% (16,777,216B) 0x1294B4: vector (stl_vector.h:571)
+|             ->35.02% (16,777,216B) 0x1294B4: MemPool (mem_pool.h:49)
+|               ->35.02% (16,777,216B) 0x1294B4: MarketOrderBook (market_order_book.h:93)
+|                 ->35.02% (16,777,216B) 0x1294B4: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->35.02% (16,777,216B) 0x1294B4: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->35.02% (16,777,216B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->19.70% (9,440,320B) 0x1293D8: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+| ->19.70% (9,440,320B) 0x1293D8: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|   ->19.70% (9,440,320B) 0x10E85A: main (jev_bench.cpp:191)
+|     
+->02.74% (1,310,720B) 0x129532: allocate (new_allocator.h:151)
+| ->02.74% (1,310,720B) 0x129532: allocate (allocator.h:198)
+|   ->02.74% (1,310,720B) 0x129532: allocate (alloc_traits.h:482)
+|     ->02.74% (1,310,720B) 0x129532: _M_allocate (stl_vector.h:381)
+|       ->02.74% (1,310,720B) 0x129532: _M_create_storage (stl_vector.h:398)
+|         ->02.74% (1,310,720B) 0x129532: _Vector_base (stl_vector.h:335)
+|           ->02.74% (1,310,720B) 0x129532: vector (stl_vector.h:571)
+|             ->02.74% (1,310,720B) 0x129532: MemPool (mem_pool.h:49)
+|               ->02.74% (1,310,720B) 0x129532: MarketOrderBook (market_order_book.h:94)
+|                 ->02.74% (1,310,720B) 0x129532: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->02.74% (1,310,720B) 0x129532: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->02.74% (1,310,720B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->02.74% (1,310,720B) 0x1295AE: allocate (new_allocator.h:151)
+| ->02.74% (1,310,720B) 0x1295AE: allocate (allocator.h:198)
+|   ->02.74% (1,310,720B) 0x1295AE: allocate (alloc_traits.h:482)
+|     ->02.74% (1,310,720B) 0x1295AE: _M_allocate (stl_vector.h:381)
+|       ->02.74% (1,310,720B) 0x1295AE: _M_create_storage (stl_vector.h:398)
+|         ->02.74% (1,310,720B) 0x1295AE: _Vector_base (stl_vector.h:335)
+|           ->02.74% (1,310,720B) 0x1295AE: vector (stl_vector.h:571)
+|             ->02.74% (1,310,720B) 0x1295AE: MemPool (mem_pool.h:49)
+|               ->02.74% (1,310,720B) 0x1295AE: MarketOrderBook (market_order_book.h:95)
+|                 ->02.74% (1,310,720B) 0x1295AE: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->02.74% (1,310,720B) 0x1295AE: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->02.74% (1,310,720B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->02.04% (977,083B) in 23 places, all below massif's threshold (1.00%)
+  
+--------------------------------------------------------------------------------
+  n        time(i)         total(B)   useful-heap(B) extra-heap(B)    stacks(B)
+--------------------------------------------------------------------------------
+ 21     21,070,538       47,908,208       47,903,646         4,562            0
+ 22 15,384,470,872       47,908,184       47,903,630         4,554            0
+ 23 15,385,080,832       47,917,608       47,912,813         4,795            0
+ 24 15,385,933,783       47,925,800       47,921,005         4,795            0
+ 25 15,387,012,090       47,942,184       47,937,390         4,794            0
+ 26 15,387,820,423       47,942,184       47,937,390         4,794            0
+ 27 15,388,810,402       47,974,952       47,970,157         4,795            0
+ 28 15,389,326,861       47,974,952       47,970,158         4,794            0
+ 29 15,390,359,666       47,974,952       47,970,161         4,791            0
+ 30 15,390,876,404       47,974,952       47,970,157         4,795            0
+ 31 15,391,841,944       47,974,952       47,970,158         4,794            0
+ 32 15,392,400,406       48,040,488       48,035,694         4,794            0
+ 33 15,393,478,259       48,040,488       48,035,694         4,794            0
+ 34 15,394,017,362       48,040,488       48,035,694         4,794            0
+ 35 15,395,095,201       48,040,488       48,035,694         4,794            0
+ 36 15,396,173,543       48,040,488       48,035,694         4,794            0
+ 37 15,396,757,246       48,040,488       48,035,697         4,791            0
+ 38 15,397,363,768       48,040,488       48,035,693         4,795            0
+ 39 15,398,149,640       48,040,488       48,035,694         4,794            0
+ 40 15,398,935,630       48,040,488       48,035,694         4,794            0
+ 41 15,399,784,033       48,171,560       48,166,765         4,795            0
+ 42 15,400,727,215       48,171,560       48,166,766         4,794            0
+ 43 15,401,715,457       48,171,560       48,166,766         4,794            0
+ 44 15,402,726,023       48,171,560       48,166,765         4,795            0
+ 45 15,403,781,778       48,171,560       48,166,766         4,794            0
+ 46 15,404,837,423       48,171,560       48,166,766         4,794            0
+ 47 15,405,915,404       48,171,560       48,166,766         4,794            0
+ 48 15,406,923,720       48,166,432       48,161,712         4,720            0
+ 49 15,407,470,894       48,166,432       48,161,712         4,720            0
+ 50 15,407,472,048       48,214,680       48,209,944         4,736            0
+ 51 15,408,018,626       48,166,432       48,161,712         4,720            0
+ 52 15,408,019,780       48,214,680       48,209,944         4,736            0
+ 53 15,408,565,708       48,166,432       48,161,712         4,720            0
+99.99% (48,161,712B) (heap allocation functions) malloc/new/new[], --alloc-fns, etc.
+->37.55% (18,087,936B) 0x117A44: allocate (new_allocator.h:151)
+| ->37.55% (18,087,936B) 0x117A44: allocate (allocator.h:198)
+|   ->37.55% (18,087,936B) 0x117A44: allocate (alloc_traits.h:482)
+|     ->37.55% (18,087,936B) 0x117A44: _M_allocate (stl_vector.h:381)
+|       ->37.55% (18,087,936B) 0x117A44: _M_create_storage (stl_vector.h:398)
+|         ->37.55% (18,087,936B) 0x117A44: _Vector_base (stl_vector.h:335)
+|           ->37.55% (18,087,936B) 0x117A44: vector (stl_vector.h:557)
+|             ->37.55% (18,087,936B) 0x117A44: LFQueue (lf_queue.h:22)
+|               ->37.55% (18,087,936B) 0x117A44: ProducerState (async_logger.h:101)
+|                 ->37.55% (18,087,936B) 0x117A44: make_unique<Common::AsyncLogger::ProducerState, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::filesystem::__cxx11::path, long unsigned int&> (unique_ptr.h:1070)
+|                   ->37.55% (18,087,936B) 0x117A44: Common::AsyncLogger::registerProducer(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) (async_logger.h:248)
+|                     ->37.55% (18,087,936B) 0x129B3A: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:41)
+|                       ->37.55% (18,087,936B) 0x10E85A: main (jev_bench.cpp:191)
+|                         
+->34.83% (16,777,216B) 0x1294B4: allocate (new_allocator.h:151)
+| ->34.83% (16,777,216B) 0x1294B4: allocate (allocator.h:198)
+|   ->34.83% (16,777,216B) 0x1294B4: allocate (alloc_traits.h:482)
+|     ->34.83% (16,777,216B) 0x1294B4: _M_allocate (stl_vector.h:381)
+|       ->34.83% (16,777,216B) 0x1294B4: _M_create_storage (stl_vector.h:398)
+|         ->34.83% (16,777,216B) 0x1294B4: _Vector_base (stl_vector.h:335)
+|           ->34.83% (16,777,216B) 0x1294B4: vector (stl_vector.h:571)
+|             ->34.83% (16,777,216B) 0x1294B4: MemPool (mem_pool.h:49)
+|               ->34.83% (16,777,216B) 0x1294B4: MarketOrderBook (market_order_book.h:93)
+|                 ->34.83% (16,777,216B) 0x1294B4: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->34.83% (16,777,216B) 0x1294B4: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->34.83% (16,777,216B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->19.60% (9,440,320B) 0x1293D8: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+| ->19.60% (9,440,320B) 0x1293D8: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|   ->19.60% (9,440,320B) 0x10E85A: main (jev_bench.cpp:191)
+|     
+->02.72% (1,310,720B) 0x129532: allocate (new_allocator.h:151)
+| ->02.72% (1,310,720B) 0x129532: allocate (allocator.h:198)
+|   ->02.72% (1,310,720B) 0x129532: allocate (alloc_traits.h:482)
+|     ->02.72% (1,310,720B) 0x129532: _M_allocate (stl_vector.h:381)
+|       ->02.72% (1,310,720B) 0x129532: _M_create_storage (stl_vector.h:398)
+|         ->02.72% (1,310,720B) 0x129532: _Vector_base (stl_vector.h:335)
+|           ->02.72% (1,310,720B) 0x129532: vector (stl_vector.h:571)
+|             ->02.72% (1,310,720B) 0x129532: MemPool (mem_pool.h:49)
+|               ->02.72% (1,310,720B) 0x129532: MarketOrderBook (market_order_book.h:94)
+|                 ->02.72% (1,310,720B) 0x129532: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->02.72% (1,310,720B) 0x129532: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->02.72% (1,310,720B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->02.72% (1,310,720B) 0x1295AE: allocate (new_allocator.h:151)
+| ->02.72% (1,310,720B) 0x1295AE: allocate (allocator.h:198)
+|   ->02.72% (1,310,720B) 0x1295AE: allocate (alloc_traits.h:482)
+|     ->02.72% (1,310,720B) 0x1295AE: _M_allocate (stl_vector.h:381)
+|       ->02.72% (1,310,720B) 0x1295AE: _M_create_storage (stl_vector.h:398)
+|         ->02.72% (1,310,720B) 0x1295AE: _Vector_base (stl_vector.h:335)
+|           ->02.72% (1,310,720B) 0x1295AE: vector (stl_vector.h:571)
+|             ->02.72% (1,310,720B) 0x1295AE: MemPool (mem_pool.h:49)
+|               ->02.72% (1,310,720B) 0x1295AE: MarketOrderBook (market_order_book.h:95)
+|                 ->02.72% (1,310,720B) 0x1295AE: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->02.72% (1,310,720B) 0x1295AE: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->02.72% (1,310,720B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->02.56% (1,234,800B) in 32 places, all below massif's threshold (1.00%)
+  
+--------------------------------------------------------------------------------
+  n        time(i)         total(B)   useful-heap(B) extra-heap(B)    stacks(B)
+--------------------------------------------------------------------------------
+ 54 15,408,570,370       48,166,472       48,161,743         4,729            0
+ 55 15,408,570,946       48,166,760       48,162,004         4,756            0
+ 56 15,408,571,203       48,167,032       48,162,269         4,763            0
+ 57 15,408,571,675       48,166,816       48,162,069         4,747            0
+ 58 15,408,571,857       48,166,872       48,162,110         4,762            0
+ 59 15,408,573,043       48,166,816       48,162,069         4,747            0
+ 60 15,408,573,229       48,166,504       48,161,773         4,731            0
+ 61 15,408,573,397       48,100,888       48,096,176         4,712            0
+ 62 15,408,573,505       48,100,728       48,096,051         4,677            0
+ 63 15,408,573,622       48,035,144       48,030,490         4,654            0
+99.99% (48,030,490B) (heap allocation functions) malloc/new/new[], --alloc-fns, etc.
+->37.66% (18,087,936B) 0x117A44: allocate (new_allocator.h:151)
+| ->37.66% (18,087,936B) 0x117A44: allocate (allocator.h:198)
+|   ->37.66% (18,087,936B) 0x117A44: allocate (alloc_traits.h:482)
+|     ->37.66% (18,087,936B) 0x117A44: _M_allocate (stl_vector.h:381)
+|       ->37.66% (18,087,936B) 0x117A44: _M_create_storage (stl_vector.h:398)
+|         ->37.66% (18,087,936B) 0x117A44: _Vector_base (stl_vector.h:335)
+|           ->37.66% (18,087,936B) 0x117A44: vector (stl_vector.h:557)
+|             ->37.66% (18,087,936B) 0x117A44: LFQueue (lf_queue.h:22)
+|               ->37.66% (18,087,936B) 0x117A44: ProducerState (async_logger.h:101)
+|                 ->37.66% (18,087,936B) 0x117A44: make_unique<Common::AsyncLogger::ProducerState, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::filesystem::__cxx11::path, long unsigned int&> (unique_ptr.h:1070)
+|                   ->37.66% (18,087,936B) 0x117A44: Common::AsyncLogger::registerProducer(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) (async_logger.h:248)
+|                     ->37.66% (18,087,936B) 0x129B3A: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:41)
+|                       ->37.66% (18,087,936B) 0x10E85A: main (jev_bench.cpp:191)
+|                         
+->34.93% (16,777,216B) 0x1294B4: allocate (new_allocator.h:151)
+| ->34.93% (16,777,216B) 0x1294B4: allocate (allocator.h:198)
+|   ->34.93% (16,777,216B) 0x1294B4: allocate (alloc_traits.h:482)
+|     ->34.93% (16,777,216B) 0x1294B4: _M_allocate (stl_vector.h:381)
+|       ->34.93% (16,777,216B) 0x1294B4: _M_create_storage (stl_vector.h:398)
+|         ->34.93% (16,777,216B) 0x1294B4: _Vector_base (stl_vector.h:335)
+|           ->34.93% (16,777,216B) 0x1294B4: vector (stl_vector.h:571)
+|             ->34.93% (16,777,216B) 0x1294B4: MemPool (mem_pool.h:49)
+|               ->34.93% (16,777,216B) 0x1294B4: MarketOrderBook (market_order_book.h:93)
+|                 ->34.93% (16,777,216B) 0x1294B4: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->34.93% (16,777,216B) 0x1294B4: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->34.93% (16,777,216B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->19.65% (9,440,320B) 0x1293D8: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+| ->19.65% (9,440,320B) 0x1293D8: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|   ->19.65% (9,440,320B) 0x10E85A: main (jev_bench.cpp:191)
+|     
+->02.73% (1,310,720B) 0x129532: allocate (new_allocator.h:151)
+| ->02.73% (1,310,720B) 0x129532: allocate (allocator.h:198)
+|   ->02.73% (1,310,720B) 0x129532: allocate (alloc_traits.h:482)
+|     ->02.73% (1,310,720B) 0x129532: _M_allocate (stl_vector.h:381)
+|       ->02.73% (1,310,720B) 0x129532: _M_create_storage (stl_vector.h:398)
+|         ->02.73% (1,310,720B) 0x129532: _Vector_base (stl_vector.h:335)
+|           ->02.73% (1,310,720B) 0x129532: vector (stl_vector.h:571)
+|             ->02.73% (1,310,720B) 0x129532: MemPool (mem_pool.h:49)
+|               ->02.73% (1,310,720B) 0x129532: MarketOrderBook (market_order_book.h:94)
+|                 ->02.73% (1,310,720B) 0x129532: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->02.73% (1,310,720B) 0x129532: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->02.73% (1,310,720B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->02.73% (1,310,720B) 0x1295AE: allocate (new_allocator.h:151)
+| ->02.73% (1,310,720B) 0x1295AE: allocate (allocator.h:198)
+|   ->02.73% (1,310,720B) 0x1295AE: allocate (alloc_traits.h:482)
+|     ->02.73% (1,310,720B) 0x1295AE: _M_allocate (stl_vector.h:381)
+|       ->02.73% (1,310,720B) 0x1295AE: _M_create_storage (stl_vector.h:398)
+|         ->02.73% (1,310,720B) 0x1295AE: _Vector_base (stl_vector.h:335)
+|           ->02.73% (1,310,720B) 0x1295AE: vector (stl_vector.h:571)
+|             ->02.73% (1,310,720B) 0x1295AE: MemPool (mem_pool.h:49)
+|               ->02.73% (1,310,720B) 0x1295AE: MarketOrderBook (market_order_book.h:95)
+|                 ->02.73% (1,310,720B) 0x1295AE: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->02.73% (1,310,720B) 0x1295AE: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->02.73% (1,310,720B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->02.30% (1,103,578B) in 33 places, all below massif's threshold (1.00%)
+  
+--------------------------------------------------------------------------------
+  n        time(i)         total(B)   useful-heap(B) extra-heap(B)    stacks(B)
+--------------------------------------------------------------------------------
+ 64 15,408,573,733       47,969,480       47,964,850         4,630            0
+ 65 15,408,573,841       47,969,320       47,964,724         4,596            0
+ 66 15,408,573,965       47,903,736       47,899,166         4,570            0
+ 67 15,408,574,194       47,739,752       47,735,222         4,530            0
+ 68 15,408,574,302       45,478,744       45,474,230         4,514            0
+ 69 15,408,574,413       44,134,840       44,130,350         4,490            0
+ 70 15,408,574,521       41,873,832       41,869,358         4,474            0
+ 71 15,408,574,632       40,529,928       40,525,478         4,450            0
+ 72 15,408,574,740       38,268,920       38,264,486         4,434            0
+ 73 15,408,574,851       36,925,016       36,920,606         4,410            0
+99.99% (36,920,606B) (heap allocation functions) malloc/new/new[], --alloc-fns, etc.
+->48.99% (18,087,936B) 0x117A44: allocate (new_allocator.h:151)
+| ->48.99% (18,087,936B) 0x117A44: allocate (allocator.h:198)
+|   ->48.99% (18,087,936B) 0x117A44: allocate (alloc_traits.h:482)
+|     ->48.99% (18,087,936B) 0x117A44: _M_allocate (stl_vector.h:381)
+|       ->48.99% (18,087,936B) 0x117A44: _M_create_storage (stl_vector.h:398)
+|         ->48.99% (18,087,936B) 0x117A44: _Vector_base (stl_vector.h:335)
+|           ->48.99% (18,087,936B) 0x117A44: vector (stl_vector.h:557)
+|             ->48.99% (18,087,936B) 0x117A44: LFQueue (lf_queue.h:22)
+|               ->48.99% (18,087,936B) 0x117A44: ProducerState (async_logger.h:101)
+|                 ->48.99% (18,087,936B) 0x117A44: make_unique<Common::AsyncLogger::ProducerState, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::filesystem::__cxx11::path, long unsigned int&> (unique_ptr.h:1070)
+|                   ->48.99% (18,087,936B) 0x117A44: Common::AsyncLogger::registerProducer(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) (async_logger.h:248)
+|                     ->48.99% (18,087,936B) 0x129B3A: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:41)
+|                       ->48.99% (18,087,936B) 0x10E85A: main (jev_bench.cpp:191)
+|                         
+->28.40% (10,485,760B) 0x1294B4: allocate (new_allocator.h:151)
+| ->28.40% (10,485,760B) 0x1294B4: allocate (allocator.h:198)
+|   ->28.40% (10,485,760B) 0x1294B4: allocate (alloc_traits.h:482)
+|     ->28.40% (10,485,760B) 0x1294B4: _M_allocate (stl_vector.h:381)
+|       ->28.40% (10,485,760B) 0x1294B4: _M_create_storage (stl_vector.h:398)
+|         ->28.40% (10,485,760B) 0x1294B4: _Vector_base (stl_vector.h:335)
+|           ->28.40% (10,485,760B) 0x1294B4: vector (stl_vector.h:571)
+|             ->28.40% (10,485,760B) 0x1294B4: MemPool (mem_pool.h:49)
+|               ->28.40% (10,485,760B) 0x1294B4: MarketOrderBook (market_order_book.h:93)
+|                 ->28.40% (10,485,760B) 0x1294B4: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->28.40% (10,485,760B) 0x1294B4: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->28.40% (10,485,760B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->15.98% (5,900,200B) 0x1293D8: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+| ->15.98% (5,900,200B) 0x1293D8: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|   ->15.98% (5,900,200B) 0x10E85A: main (jev_bench.cpp:191)
+|     
+->02.22% (819,200B) 0x129532: allocate (new_allocator.h:151)
+| ->02.22% (819,200B) 0x129532: allocate (allocator.h:198)
+|   ->02.22% (819,200B) 0x129532: allocate (alloc_traits.h:482)
+|     ->02.22% (819,200B) 0x129532: _M_allocate (stl_vector.h:381)
+|       ->02.22% (819,200B) 0x129532: _M_create_storage (stl_vector.h:398)
+|         ->02.22% (819,200B) 0x129532: _Vector_base (stl_vector.h:335)
+|           ->02.22% (819,200B) 0x129532: vector (stl_vector.h:571)
+|             ->02.22% (819,200B) 0x129532: MemPool (mem_pool.h:49)
+|               ->02.22% (819,200B) 0x129532: MarketOrderBook (market_order_book.h:94)
+|                 ->02.22% (819,200B) 0x129532: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->02.22% (819,200B) 0x129532: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->02.22% (819,200B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->01.77% (655,360B) 0x1295AE: allocate (new_allocator.h:151)
+| ->01.77% (655,360B) 0x1295AE: allocate (allocator.h:198)
+|   ->01.77% (655,360B) 0x1295AE: allocate (alloc_traits.h:482)
+|     ->01.77% (655,360B) 0x1295AE: _M_allocate (stl_vector.h:381)
+|       ->01.77% (655,360B) 0x1295AE: _M_create_storage (stl_vector.h:398)
+|         ->01.77% (655,360B) 0x1295AE: _Vector_base (stl_vector.h:335)
+|           ->01.77% (655,360B) 0x1295AE: vector (stl_vector.h:571)
+|             ->01.77% (655,360B) 0x1295AE: MemPool (mem_pool.h:49)
+|               ->01.77% (655,360B) 0x1295AE: MarketOrderBook (market_order_book.h:95)
+|                 ->01.77% (655,360B) 0x1295AE: make_unique<Trading::MarketOrderBook, unsigned int&> (unique_ptr.h:1070)
+|                   ->01.77% (655,360B) 0x1295AE: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:35)
+|                     ->01.77% (655,360B) 0x10E85A: main (jev_bench.cpp:191)
+|                       
+->01.48% (546,166B) in 32 places, all below massif's threshold (1.00%)
+| 
+->01.15% (425,984B) 0x10E64C: allocate (new_allocator.h:151)
+  ->01.15% (425,984B) 0x10E64C: allocate (allocator.h:198)
+    ->01.15% (425,984B) 0x10E64C: allocate (alloc_traits.h:482)
+      ->01.15% (425,984B) 0x10E64C: _M_allocate (stl_vector.h:381)
+        ->01.15% (425,984B) 0x10E64C: _M_create_storage (stl_vector.h:398)
+          ->01.15% (425,984B) 0x10E64C: _Vector_base (stl_vector.h:335)
+            ->01.15% (425,984B) 0x10E64C: vector (stl_vector.h:557)
+              ->01.15% (425,984B) 0x10E64C: LFQueue (lf_queue.h:22)
+                ->01.15% (425,984B) 0x10E64C: main (jev_bench.cpp:186)
+                  
+--------------------------------------------------------------------------------
+  n        time(i)         total(B)   useful-heap(B) extra-heap(B)    stacks(B)
+--------------------------------------------------------------------------------
+ 74 15,408,574,959       34,664,008       34,659,614         4,394            0
+ 75 15,408,575,070       33,320,104       33,315,734         4,370            0
+ 76 15,408,575,178       31,059,096       31,054,742         4,354            0
+ 77 15,408,575,289       29,715,192       29,710,862         4,330            0
+ 78 15,408,575,397       27,454,184       27,449,870         4,314            0
+ 79 15,408,575,508       26,110,280       26,105,990         4,290            0
+ 80 15,408,575,616       23,849,272       23,844,998         4,274            0
+ 81 15,408,575,727       22,505,368       22,501,118         4,250            0
+ 82 15,408,575,835       20,244,360       20,240,126         4,234            0
+ 83 15,408,575,995       18,638,312       18,634,102         4,210            0
+99.98% (18,634,102B) (heap allocation functions) malloc/new/new[], --alloc-fns, etc.
+->97.05% (18,087,936B) 0x117A44: allocate (new_allocator.h:151)
+| ->97.05% (18,087,936B) 0x117A44: allocate (allocator.h:198)
+|   ->97.05% (18,087,936B) 0x117A44: allocate (alloc_traits.h:482)
+|     ->97.05% (18,087,936B) 0x117A44: _M_allocate (stl_vector.h:381)
+|       ->97.05% (18,087,936B) 0x117A44: _M_create_storage (stl_vector.h:398)
+|         ->97.05% (18,087,936B) 0x117A44: _Vector_base (stl_vector.h:335)
+|           ->97.05% (18,087,936B) 0x117A44: vector (stl_vector.h:557)
+|             ->97.05% (18,087,936B) 0x117A44: LFQueue (lf_queue.h:22)
+|               ->97.05% (18,087,936B) 0x117A44: ProducerState (async_logger.h:101)
+|                 ->97.05% (18,087,936B) 0x117A44: make_unique<Common::AsyncLogger::ProducerState, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::filesystem::__cxx11::path, long unsigned int&> (unique_ptr.h:1070)
+|                   ->97.05% (18,087,936B) 0x117A44: Common::AsyncLogger::registerProducer(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) (async_logger.h:248)
+|                     ->97.05% (18,087,936B) 0x129B3A: Trading::TradeEngine::TradeEngine(unsigned int, Trading::RiskLimits, Common::LFQueue<Exchange::ClientRequest>*, Common::LFQueue<Exchange::ClientResponse>*, Common::LFQueue<Exchange::MarketUpdate>*, Common::LFQueue<Trading::JevDecision>*, Common::AsyncLogger*) (trade_engine.cpp:41)
+|                       ->97.05% (18,087,936B) 0x10E85A: main (jev_bench.cpp:191)
+|                         
+->01.52% (284,022B) in 36 places, all below massif's threshold (1.00%)
+| 
+->01.41% (262,144B) 0x10E48D: allocate (new_allocator.h:151)
+  ->01.41% (262,144B) 0x10E48D: allocate (allocator.h:198)
+    ->01.41% (262,144B) 0x10E48D: allocate (alloc_traits.h:482)
+      ->01.41% (262,144B) 0x10E48D: _M_allocate (stl_vector.h:381)
+        ->01.41% (262,144B) 0x10E48D: _M_create_storage (stl_vector.h:398)
+          ->01.41% (262,144B) 0x10E48D: _Vector_base (stl_vector.h:335)
+            ->01.41% (262,144B) 0x10E48D: vector (stl_vector.h:557)
+              ->01.41% (262,144B) 0x10E48D: LFQueue (lf_queue.h:22)
+                ->01.41% (262,144B) 0x10E48D: main (jev_bench.cpp:184)
+                  
+--------------------------------------------------------------------------------
+  n        time(i)         total(B)   useful-heap(B) extra-heap(B)    stacks(B)
+--------------------------------------------------------------------------------
+ 84 15,408,576,103       18,302,424       18,298,230         4,194            0
+ 85 15,408,576,211       18,171,336       18,167,158         4,178            0
+ 86 15,408,577,522       18,171,296       18,167,134         4,162            0
+ 87 15,408,577,759           79,320           79,198           122            0
+ 88 15,408,577,872           78,680           78,590            90            0
+ 89 15,408,578,032           78,464           78,390            74            0
+ 90 15,408,578,265           78,208           78,159            49            0
+ 91 15,408,591,028            4,416            4,400            16            0
+ 92 15,408,592,264              312              304             8            0
+ 93 15,408,593,651                0                0             0            0
+00.00% (0B) (heap allocation functions) malloc/new/new[], --alloc-fns, etc.
+->00.00% (0B) in 1+ places, all below ms_print's threshold (01.00%)
+

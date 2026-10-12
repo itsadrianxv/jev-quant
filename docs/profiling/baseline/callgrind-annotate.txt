@@ -1,0 +1,860 @@
+--------------------------------------------------------------------------------
+Profile data file '/tmp/tmp.PzoCNqq4NR/callgrind.out' (creator: callgrind-3.22.0)
+--------------------------------------------------------------------------------
+I1 cache: 
+D1 cache: 
+LL cache: 
+Timerange: Basic block 0 - 4144567322
+Trigger: Program termination
+Profiled target:  build/Release-profile/jev_bench --updates 20000 --out /tmp/tmp.PzoCNqq4NR/callgrind-ttt (PID 716, part 1)
+Events recorded:  Ir Bc Bcm Bi Bim
+Events shown:     Ir Bc Bcm Bi Bim
+Event sort order: Ir Bc Bcm Bi Bim
+Thresholds:       99 0 0 0 0
+Include dirs:     
+User annotated:   
+Auto-annotation:  on
+
+--------------------------------------------------------------------------------
+Ir                      Bc                     Bcm              Bi                 Bim              
+--------------------------------------------------------------------------------
+15,395,670,620 (100.0%) 4,136,268,469 (100.0%) 873,495 (100.0%) 2,228,531 (100.0%) 180,944 (100.0%)  PROGRAM TOTALS
+
+--------------------------------------------------------------------------------
+Ir                     Bc                     Bcm              Bi               Bim              file:function
+--------------------------------------------------------------------------------
+7,865,180,000 (51.09%) 2,621,520,000 (63.38%)  20,035 ( 2.29%)       .               .           src/trading/strategy/market_order_book.h:Trading::MarketOrderBook::clearIncrementalBook() [/home/wangyuk/build/jev-quant/ttt-bench-profiling/build/Release-profile/jev_bench]
+7,372,960,000 (47.89%) 1,474,600,000 (35.65%)  60,053 ( 6.88%)       .               .           /usr/include/c++/13/bits/stl_algobase.h:Trading::MarketOrderBook::clearIncrementalBook()
+   10,320,000 ( 0.07%)     3,360,000 ( 0.08%)  60,111 ( 6.88%)       .               .           src/trading/strategy/trade_engine.cpp:Trading::TradeEngine::buildJevEvaluationState(unsigned int, unsigned long) const [/home/wangyuk/build/jev-quant/ttt-bench-profiling/build/Release-profile/jev_bench]
+
+--------------------------------------------------------------------------------
+-- Auto-annotated source: src/trading/strategy/trade_engine.cpp
+--------------------------------------------------------------------------------
+Ir                 Bc                 Bcm             Bi Bim 
+
+-- line 4 ----------------------------------------
+        .                  .               .          .          .           #include <algorithm>
+        .                  .               .          .          .           #include <stdexcept>
+        .                  .               .          .          .           #include <sstream>
+        .                  .               .          .          .           
+        .                  .               .          .          .           #include "common/time_utils.h"
+        .                  .               .          .          .           
+        .                  .               .          .          .           namespace Trading {
+        .                  .               .          .          .           
+       18 ( 0.00%)         .               .          .          .           TradeEngine::TradeEngine(
+        .                  .               .          .          .                   Common::ClientId client_id, RiskLimits risk_limits,
+        .                  .               .          .          .                   Exchange::ClientRequestLFQueue* outgoing_requests,
+        .                  .               .          .          .                   Exchange::ClientResponseLFQueue* incoming_responses,
+        .                  .               .          .          .                   Exchange::MarketUpdateLFQueue* incoming_market_updates,
+        .                  .               .          .          .                   JevDecisionLFQueue* incoming_jev_decisions,
+        .                  .               .          .          .                   Common::AsyncLogger* logger)
+        1 ( 0.00%)         .               .          .          .                   : client_id_(client_id),
+       76 ( 0.00%)        72 ( 0.00%)      8 ( 0.00%) .          .                       position_keeper_(),
+        2 ( 0.00%)         .               .          .          .                       risk_manager_(&position_keeper_, risk_limits),
+        2 ( 0.00%)         .               .          .          .                       order_manager_(client_id_, this, &risk_manager_),
+        1 ( 0.00%)         .               .          .          .                       outgoing_requests_(outgoing_requests),
+        1 ( 0.00%)         .               .          .          .                       incoming_responses_(incoming_responses),
+        1 ( 0.00%)         .               .          .          .                       incoming_market_updates_(incoming_market_updates),
+       65 ( 0.00%)        41 ( 0.00%)     10 ( 0.00%) .          .                       incoming_jev_decisions_(incoming_jev_decisions), logger_(logger) {
+        4 ( 0.00%)         .               .          .          .               if (outgoing_requests_ == nullptr || incoming_responses_ == nullptr ||
+        7 ( 0.00%)         2 ( 0.00%)      1 ( 0.00%) .          .                       incoming_market_updates_ == nullptr || incoming_jev_decisions_ == nullptr) {
+        .                  .               .          .          .                   throw std::invalid_argument("TradeEngine queues must not be null");
+        .                  .               .          .          .               }
+        .                  .               .          .          .           
+        .                  .               .          .          .               for (Common::TickerId ticker_id = 0;
+       24 ( 0.00%)         8 ( 0.00%)      3 ( 0.00%) .          .                         ticker_id < Common::ME_MAX_TICKERS; ++ticker_id) {
+        .                  .               .          .          .                   ticker_order_books_[ticker_id] =
+        .                  .               .          .          .                           std::make_unique<MarketOrderBook>(ticker_id);
+        .                  .               .          .          .               }
+        4 ( 0.00%)         1 ( 0.00%)      .          .          .               if (logger_ != nullptr) {
+        .                  .               .          .          .                   // Registered at construction so records are emitted even when the
+        .                  .               .          .          .                   // engine is driven synchronously through processPending() without a
+        .                  .               .          .          .                   // worker thread. The handle binds to the calling thread on first use.
+        6 ( 0.00%)         .               .          .          .                   ttt_handle_.emplace(logger_->registerProducer(
+4,581,192 ( 0.03%) 4,376,042 ( 0.11%) 32,990 ( 3.78%) 122 ( 0.01%) 57 ( 0.03%)  => /home/wangyuk/build/jev-quant/ttt-bench-profiling/src/common/async_logger.h:Common::AsyncLogger::registerProducer(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) (1x)
+        1 ( 0.00%)         .               .          .          .                           "TTT", "ttt-" + std::to_string(client_id_) + ".log"));
+        .                  .               .          .          .               }
+        2 ( 0.00%)         .               .          .          .               next_jev_evaluation_at_ = std::chrono::steady_clock::now();
+      863 ( 0.00%)       116 ( 0.00%)     11 ( 0.00%) 5 ( 0.00%) 4 ( 0.00%)  => ???:0x000000000010c8d0 (1x)
+       11 ( 0.00%)         1 ( 0.00%)      .          .          .           }
+        .                  .               .          .          .           
+        .                  .               .          .          .           TradeEngine::TradeEngine(
+        .                  .               .          .          .                   Exchange::ClientRequestLFQueue* outgoing_requests,
+        .                  .               .          .          .                   Exchange::ClientResponseLFQueue* incoming_responses,
+        .                  .               .          .          .                   Exchange::MarketUpdateLFQueue* incoming_market_updates,
+        .                  .               .          .          .                   JevDecisionLFQueue* incoming_jev_decisions)
+        .                  .               .          .          .                   : TradeEngine(0, defaultRiskLimits(), outgoing_requests, incoming_responses,
+        .                  .               .          .          .                                               incoming_market_updates, incoming_jev_decisions) {}
+        .                  .               .          .          .           
+        .                  .               .          .          .           auto TradeEngine::defaultRiskLimits() -> RiskLimits {
+        .                  .               .          .          .               return RiskLimits{Common::Qty_INVALID, Common::Qty_INVALID, 0.0};
+        .                  .               .          .          .           }
+        .                  .               .          .          .           
+       13 ( 0.00%)         .               .          .          .           TradeEngine::~TradeEngine() {
+        .                  .               .          .          .               stop();
+       11 ( 0.00%)         1 ( 0.00%)      .          .          .           }
+        .                  .               .          .          .           
+        .                  .               .          .          .           auto TradeEngine::start() -> void {
+        .                  .               .          .          .               bool expected = false;
+        .                  .               .          .          .               if (!running_.compare_exchange_strong(expected, true,
+        .                  .               .          .          .                                                                                           std::memory_order_acq_rel)) {
+        .                  .               .          .          .                   return;
+        .                  .               .          .          .               }
+        .                  .               .          .          .               worker_ = std::jthread([this] { run(); });
+        .                  .               .          .          .           }
+        .                  .               .          .          .           
+        .                  .               .          .          .           auto TradeEngine::stop() -> void {
+        .                  .               .          .          .               running_.store(false, std::memory_order_release);
+        2 ( 0.00%)         1 ( 0.00%)      .          .          .               if (worker_.joinable()) {
+        .                  .               .          .          .                   worker_.join();
+        .                  .               .          .          .               }
+        .                  .               .          .          .           }
+        .                  .               .          .          .           
+        .                  .               .          .          .           auto TradeEngine::run() -> void {
+        .                  .               .          .          .               if (logger_ != nullptr) {
+        .                  .               .          .          .                   log_handle_.emplace(logger_->registerProducer(
+        .                  .               .          .          .                           "TradeEngine", "trade-engine-" + std::to_string(client_id_) + ".log"));
+-- line 82 ----------------------------------------
+-- line 95 ----------------------------------------
+        .                  .               .          .          .                       out.append("event=component_stopped client_id=").append(client_id_);
+        .                  .               .          .          .                   });
+        .                  .               .          .          .               }
+        .                  .               .          .          .           }
+        .                  .               .          .          .           
+        .                  .               .          .          .           auto TradeEngine::recordLatency(std::string_view event, std::uint64_t evaluation_id,
+        .                  .               .          .          .                                           Common::TickerId ticker_id, std::uint64_t elapsed_ns)
+        .                  .               .          .          .                   -> void {
+  520,000 ( 0.00%)    80,000 ( 0.00%)      2 ( 0.00%) .          .               if (!ttt_handle_) return;
+1,080,000 ( 0.01%)         .               .          .          .               ttt_handle_->logFixed(Common::LogLevel::INFO, [&](Common::LogWriter& out) {
+3,502,268 ( 0.02%)   460,242 ( 0.01%) 15,014 ( 1.72%) 29,866 ( 1.34%) .           => /home/wangyuk/build/jev-quant/ttt-bench-profiling/src/common/async_logger.h:void Common::AsyncLogger::ProducerHandle::logFixed<Trading::TradeEngine::recordLatency(std::basic_string_view<char, std::char_traits<char> >, unsigned long, unsigned int, unsigned long)::{lambda(Common::LogWriter&)#1}>(Common::LogLevel, Trading::TradeEngine::recordLatency(std::basic_string_view<char, std::char_traits<char> >, unsigned long, unsigned int, unsigned long)::{lambda(Common::LogWriter&)#1}&&) [clone .constprop.0] (20,000x)
+   59,127 ( 0.00%)         .               .          .          .                   out.append("event=").append(event)
+   39,418 ( 0.00%)         .               .          .          .                           .append(" evaluation_id=").append(evaluation_id)
+   39,418 ( 0.00%)         .               .          .          .                           .append(" ticker_id=").append(ticker_id)
+   39,418 ( 0.00%)         .               .          .          .                           .append(" elapsed_ns=").append(elapsed_ns);
+        .                  .               .          .          .               });
+        .                  .               .          .          .           }
+        .                  .               .          .          .           
+        .                  .               .          .          .           auto TradeEngine::recordDecisionDrop(std::string_view event,
+        .                  .               .          .          .                                                const JevDecision& decision) -> void {
+        .                  .               .          .          .               if (!ttt_handle_) return;
+        .                  .               .          .          .               ttt_handle_->logFixed(Common::LogLevel::WARN, [&](Common::LogWriter& out) {
+        .                  .               .          .          .                   out.append("event=").append(event)
+        .                  .               .          .          .                           .append(" evaluation_id=").append(decision.evaluation_id_)
+        .                  .               .          .          .                           .append(" ticker_id=").append(decision.ticker_id_);
+        .                  .               .          .          .               });
+        .                  .               .          .          .           }
+        .                  .               .          .          .           
+  480,000 ( 0.00%)         .               .          .          .           auto TradeEngine::processPending() -> bool {
+        .                  .               .          .          .               bool processed = false;
+  120,000 ( 0.00%)         .               .          .          .               processed = processClientResponses() || processed;
+8,620,960 ( 0.06%)   890,463 ( 0.02%) 31,554 ( 3.61%) 109,864 ( 4.93%) 20,001 (11.05%)  => src/trading/strategy/trade_engine.cpp:Trading::TradeEngine::processClientResponses() (60,000x)
+  300,000 ( 0.00%)         .               .          .          .               processed = processMarketUpdates() || processed;
+15,248,783,126 (99.05%) 4,097,194,445 (99.06%) 90,208 (10.33%) 109,823 ( 4.93%) 8 ( 0.00%)  => src/trading/strategy/trade_engine.cpp:Trading::TradeEngine::processMarketUpdates() (60,000x)
+  300,000 ( 0.00%)         .               .          .          .               processed = processJevDecisions() || processed;
+18,425,548 ( 0.12%) 2,030,627 ( 0.05%) 70,115 ( 8.03%) 199,736 ( 8.96%) 1 ( 0.00%)  => src/trading/strategy/trade_engine.cpp:Trading::TradeEngine::processJevDecisions() (60,000x)
+  120,000 ( 0.00%)    60,000 ( 0.00%)      .          .          .               processed = scheduleJevEvaluation() || processed;
+        .                  .               .          .          .               return processed;
+  360,000 ( 0.00%)         .               .          .          .           }
+        .                  .               .          .          .           
+1,500,000 ( 0.01%)         .               .          .          .           auto TradeEngine::processClientResponses() -> bool {
+  120,000 ( 0.00%)         .               .          .          .               bool processed = false;
+  120,000 ( 0.00%)    20,000 ( 0.00%)      1 ( 0.00%) .          .               while (const auto* response = incoming_responses_->getNextToRead()) {
+   40,000 ( 0.00%)    20,000 ( 0.00%)  1,633 ( 0.19%) .          .                   if (response->published_ns_ != 0) {
+   60,000 ( 0.00%)         .               .          .          .                       recordLatency("ttt_order_round_trip", 0, response->ticker_id_,
+        .                  .               .          .          .                                     Common::nowSteadyNs() - response->published_ns_);
+        .                  .               .          .          .                   }
+   40,000 ( 0.00%)    20,000 ( 0.00%)      4 ( 0.00%) .          .                   if (log_handle_) {
+        .                  .               .          .          .                       log_handle_->logFixed(Common::LogLevel::INFO,
+        .                  .               .          .          .                                             [&](Common::LogWriter& out) {
+        .                  .               .          .          .                                                 out.append("event=client_response_consumed client_id=")
+        .                  .               .          .          .                                                         .append(client_id_)
+        .                  .               .          .          .                                                         .append(" ticker_id=")
+        .                  .               .          .          .                                                         .append(response->ticker_id_);
+        .                  .               .          .          .                                             });
+        .                  .               .          .          .                   }
+   60,000 ( 0.00%)         .               .          .          .                   handleClientResponse(*response);
+1,320,000 ( 0.01%)   140,000 ( 0.00%)  4,934 ( 0.56%) 40,000 ( 1.79%) 20,001 (11.05%)  => src/trading/strategy/trade_engine.cpp:Trading::TradeEngine::handleClientResponse(Exchange::ClientResponse const&) (20,000x)
+   20,000 ( 0.00%)         .               .          .          .                   incoming_responses_->updateReadIndex();
+   20,000 ( 0.00%)         .               .          .          .                   processed = true;
+        .                  .               .          .          .               }
+        .                  .               .          .          .               return processed;
+  720,000 ( 0.00%)    60,000 ( 0.00%)      .          .          .           }
+        .                  .               .          .          .           
+1,380,000 ( 0.01%)         .               .          .          .           auto TradeEngine::processMarketUpdates() -> bool {
+   60,000 ( 0.00%)         .               .          .          .               bool processed = false;
+  240,000 ( 0.00%)    20,000 ( 0.00%)      .          .          .               while (const auto* update = incoming_market_updates_->getNextToRead()) {
+   60,000 ( 0.00%)    20,000 ( 0.00%)      .          .          .                   if (update->ticker_id_ >= ticker_order_books_.size()) {
+        .                  .               .          .          .                       std::terminate();
+        .                  .               .          .          .                   }
+        .                  .               .          .          .           
+        .                  .               .          .          .                   auto& book = *ticker_order_books_.at(update->ticker_id_);
+   40,000 ( 0.00%)    20,000 ( 0.00%)      .          .          .                   if (update->published_ns_ != 0) {
+   60,000 ( 0.00%)         .               .          .          .                       recordLatency("ttt_market_data_consumed", 0, update->ticker_id_,
+        .                  .               .          .          .                                     Common::nowSteadyNs() - update->published_ns_);
+        .                  .               .          .          .                   }
+   40,000 ( 0.00%)    20,000 ( 0.00%)      6 ( 0.00%) .          .                   if (log_handle_ && (verbose_market_data_ ||
+        .                  .               .          .          .                                       update->type_ == Exchange::MarketUpdateType::DEPTH_SNAPSHOT)) {
+        .                  .               .          .          .                       log_handle_->logFixed(Common::LogLevel::DEBUG,
+        .                  .               .          .          .                                             [&](Common::LogWriter& out) {
+        .                  .               .          .          .                                                 out.append("event=market_update_consumed client_id=")
+        .                  .               .          .          .                                                         .append(client_id_)
+        .                  .               .          .          .                                                         .append(" ticker_id=")
+        .                  .               .          .          .                                                         .append(update->ticker_id_);
+        .                  .               .          .          .                                             });
+        .                  .               .          .          .                   }
+        .                  .               .          .          .                   book.onMarketUpdate(*update);
+   80,000 ( 0.00%)         .               .          .          .                   handleMarketUpdate(*update, book);
+2,300,000 ( 0.01%)   280,000 ( 0.01%)     80 ( 0.01%) 20,000 ( 0.90%) 1 ( 0.00%)  => src/trading/strategy/trade_engine.cpp:Trading::TradeEngine::handleMarketUpdate(Exchange::MarketUpdate const&, Trading::MarketOrderBook const&) (20,000x)
+   20,000 ( 0.00%)         .               .          .          .                   incoming_market_updates_->updateReadIndex();
+   20,000 ( 0.00%)         .               .          .          .                   processed = true;
+        .                  .               .          .          .               }
+        .                  .               .          .          .               return processed;
+  720,000 ( 0.00%)    60,000 ( 0.00%)      .          .          .           }
+        .                  .               .          .          .           
+1,260,000 ( 0.01%)         .               .          .          .           auto TradeEngine::processJevDecisions() -> bool {
+  120,000 ( 0.00%)         .               .          .          .               bool processed = false;
+  120,000 ( 0.00%)    20,000 ( 0.00%)      .          .          .               while (const auto* decision = incoming_jev_decisions_->getNextToRead()) {
+   40,000 ( 0.00%)    20,000 ( 0.00%)      2 ( 0.00%) .          .                   if (decision->enqueued_ns_ != 0) {
+   40,000 ( 0.00%)         .               .          .          .                       recordLatency("ttt_decision_consumed", decision->evaluation_id_,
+   60,000 ( 0.00%)         .               .          .          .                                     decision->ticker_id_,
+        .                  .               .          .          .                                     Common::nowSteadyNs() - decision->enqueued_ns_);
+        .                  .               .          .          .                   }
+   40,000 ( 0.00%)    20,000 ( 0.00%)      .          .          .                   if (log_handle_) {
+        .                  .               .          .          .                       log_handle_->logFixed(Common::LogLevel::INFO,
+        .                  .               .          .          .                                             [&](Common::LogWriter& out) {
+        .                  .               .          .          .                                                 out.append("event=decision_consumed client_id=")
+        .                  .               .          .          .                                                         .append(client_id_)
+        .                  .               .          .          .                                                         .append(" evaluation_id=")
+        .                  .               .          .          .                                                         .append(decision->evaluation_id_);
+        .                  .               .          .          .                                             });
+        .                  .               .          .          .                   }
+   60,000 ( 0.00%)         .               .          .          .                   handleJevDecision(*decision);
+10,382,268 ( 0.07%) 1,250,242 ( 0.03%) 35,099 ( 4.02%) 129,866 ( 5.83%) 1 ( 0.00%)  => src/trading/strategy/trade_engine.cpp:Trading::TradeEngine::handleJevDecision(Trading::JevDecision const&) (20,000x)
+   20,000 ( 0.00%)         .               .          .          .                   incoming_jev_decisions_->updateReadIndex();
+   20,000 ( 0.00%)         .               .          .          .                   processed = true;
+        .                  .               .          .          .               }
+        .                  .               .          .          .               return processed;
+  720,000 ( 0.00%)    60,000 ( 0.00%)      3 ( 0.00%) .          .           }
+        .                  .               .          .          .           
+        .                  .               .          .          .           auto TradeEngine::handleClientResponse(
+  220,000 ( 0.00%)         .               .          .          .                   const Exchange::ClientResponse& response) -> void {
+   60,000 ( 0.00%)    20,000 ( 0.00%)      .          .          .               if (response.ticker_id_ >= Common::ME_MAX_TICKERS) {
+        .                  .               .          .          .                   return;
+        .                  .               .          .          .               }
+   40,000 ( 0.00%)    20,000 ( 0.00%)      .          .          .               if (response.type_ == Exchange::ClientResponseType::FILLED) {
+        .                  .               .          .          .                   const auto expected_position = static_cast<std::int64_t>(position_keeper_.getPositionInfo(response.ticker_id_).position_) +
+        .                  .               .          .          .                           Common::sideToValue(response.side_) * static_cast<std::int64_t>(response.exec_qty_);
+        .                  .               .          .          .                   position_keeper_.onClientResponse(response);
+        .                  .               .          .          .                   if (simex_constraints_) {
+        .                  .               .          .          .                       const auto& position = position_keeper_.getPositionInfo(response.ticker_id_);
+        .                  .               .          .          .                       if (position.position_ != expected_position ||
+        .                  .               .          .          .                           static_cast<std::uint64_t>(position.todayQty()) + position.yesterdayQty() !=
+        .                  .               .          .          .                               static_cast<std::uint64_t>(std::abs(expected_position)))
+        .                  .               .          .          .                           throw std::logic_error("Simex execution and participant position disagree");
+        .                  .               .          .          .                   }
+        .                  .               .          .          .               }
+   60,000 ( 0.00%)         .               .          .          .               order_manager_.onOrderUpdate(response);
+  640,000 ( 0.00%)    80,000 ( 0.00%)  4,934 ( 0.56%) 20,000 ( 0.90%) 20,000 (11.05%)  => /home/wangyuk/build/jev-quant/ttt-bench-profiling/src/trading/strategy/order_manager.cpp:Trading::OrderManager::onOrderUpdate(Exchange::ClientResponse const&) (20,000x)
+        .                  .               .          .          .               onClientResponse(response);
+  140,000 ( 0.00%)         .               .          .          .           }
+        .                  .               .          .          .           
+        .                  .               .          .          .           auto TradeEngine::handleMarketUpdate(const Exchange::MarketUpdate& update,
+  160,000 ( 0.00%)         .               .          .          .                                                                                     const MarketOrderBook& book) -> void {
+        .                  .               .          .          .               position_keeper_.updateBBO(update.ticker_id_, book.getBBO());
+        .                  .               .          .          .               feature_engines_.at(update.ticker_id_).onMarketUpdate(book);
+   20,000 ( 0.00%)         .               .          .          .               if (!feature_engines_.at(update.ticker_id_).features().valid_) {
+        .                  .               .          .          .                   latest_evaluation_ids_.at(update.ticker_id_).store(0, std::memory_order_release);
+        .                  .               .          .          .               }
+        .                  .               .          .          .               onMarketUpdate(update, book);
+  100,000 ( 0.00%)         .               .          .          .           }
+        .                  .               .          .          .           
+  280,000 ( 0.00%)         .               .          .          .           auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
+   40,000 ( 0.00%)    20,000 ( 0.00%)      1 ( 0.00%) .          .               if (single_order_venue_ && !venue_ready_.load()) {
+        .                  .               .          .          .                   recordDecisionDrop("ttt_decision_blocked_not_ready", decision);
+        .                  .               .          .          .                   return;
+        .                  .               .          .          .               }
+   60,000 ( 0.00%)    20,000 ( 0.00%)      3 ( 0.00%) .          .               if (decision.ticker_id_ >= latest_evaluation_ids_.size() ||
+  100,000 ( 0.00%)    40,000 ( 0.00%)      .          .          .                       decision.evaluation_id_ == 0 ||
+        .                  .               .          .          .                       decision.evaluation_id_ !=
+        .                  .               .          .          .                               latest_evaluation_ids_.at(decision.ticker_id_)) {
+        .                  .               .          .          .                   if (log_handle_) {
+        .                  .               .          .          .                       log_handle_->logFixed(Common::LogLevel::WARN,
+        .                  .               .          .          .                                             [&](Common::LogWriter& out) {
+        .                  .               .          .          .                                                 out.append("event=stale_decision_dropped client_id=")
+        .                  .               .          .          .                                                         .append(client_id_)
+        .                  .               .          .          .                                                         .append(" evaluation_id=")
+        .                  .               .          .          .                                                         .append(decision.evaluation_id_);
+        .                  .               .          .          .                                             });
+        .                  .               .          .          .                   }
+        .                  .               .          .          .                   recordDecisionDrop("ttt_decision_stale_drop", decision);
+        .                  .               .          .          .                   return;
+        .                  .               .          .          .               }
+        .                  .               .          .          .           
+   80,000 ( 0.00%)    20,000 ( 0.00%)      .          .          .               if (!feature_engines_.at(decision.ticker_id_).features().valid_) {
+        .                  .               .          .          .                   recordDecisionDrop("ttt_decision_blocked_no_features", decision);
+        .                  .               .          .          .                   return;
+        .                  .               .          .          .               }
+        .                  .               .          .          .           
+   40,000 ( 0.00%)    20,000 ( 0.00%)      .          .          .               if (single_order_venue_) {
+        .                  .               .          .          .                   for (const auto side : {Common::Side::BUY, Common::Side::SELL}) {
+        .                  .               .          .          .                       const auto state = order_manager_.getOrder(decision.ticker_id_, side).order_state_;
+        .                  .               .          .          .                       if (state != OMOrderState::INVALID && state != OMOrderState::DEAD) {
+        .                  .               .          .          .                           recordDecisionDrop("ttt_decision_blocked_order_working", decision);
+        .                  .               .          .          .                           return;
+        .                  .               .          .          .                       }
+        .                  .               .          .          .                   }
+        .                  .               .          .          .                   if (decision.intent_ == JevIntent::OPEN &&
+        .                  .               .          .          .                       position_keeper_.getPositionInfo(decision.ticker_id_).position_ != 0) {
+        .                  .               .          .          .                       recordDecisionDrop("ttt_decision_blocked_position_open", decision);
+        .                  .               .          .          .                       return;
+        .                  .               .          .          .                   }
+        .                  .               .          .          .               }
+        .                  .               .          .          .           
+        .                  .               .          .          .               const auto decision_to_order_start_ns = Common::nowSteadyNs();
+   40,000 ( 0.00%)         .               .          .          .               const auto& book = *ticker_order_books_.at(decision.ticker_id_);
+        .                  .               .          .          .               const auto* bbo = book.getBBO();
+   60,000 ( 0.00%)    20,000 ( 0.00%)      2 ( 0.00%) .          .               if (decision.intent_ == JevIntent::OPEN) {
+   40,000 ( 0.00%)    20,000 ( 0.00%)      .          .          .                   const auto side = decision.bias_ == JevBias::LONG ? Common::Side::BUY
+        .                  .               .          .          .                                                                                                                         : Common::Side::SELL;
+   60,000 ( 0.00%)    20,000 ( 0.00%)      2 ( 0.00%) .          .                   if (simex_constraints_) {
+        .                  .               .          .          .                       const auto position = position_keeper_.getPositionInfo(decision.ticker_id_).position_;
+        .                  .               .          .          .                       const auto& opposite = order_manager_.getOrder(decision.ticker_id_,
+        .                  .               .          .          .                               side == Common::Side::BUY ? Common::Side::SELL : Common::Side::BUY);
+        .                  .               .          .          .                       const bool outstanding = opposite.order_state_ != OMOrderState::INVALID &&
+        .                  .               .          .          .                                                opposite.order_state_ != OMOrderState::DEAD &&
+        .                  .               .          .          .                                                opposite.offset_ == Common::OrderOffset::OPEN;
+        .                  .               .          .          .                       if ((position > 0 && side == Common::Side::SELL) ||
+        .                  .               .          .          .                           (position < 0 && side == Common::Side::BUY) || outstanding) {
+-- line 295 ----------------------------------------
+-- line 298 ----------------------------------------
+        .                  .               .          .          .                           onJevDecision(decision);
+        .                  .               .          .          .                           return;
+        .                  .               .          .          .                       }
+        .                  .               .          .          .                   }
+        .                  .               .          .          .                   // TODO(simex-counterparty): After observing replenishment and fills, decide
+        .                  .               .          .          .                   // whether simex orders should keep crossing at the current best quote or
+        .                  .               .          .          .                   // rest passively, and define their reprice/cancel lifetime. Keep the current
+        .                  .               .          .          .                   // LIMIT behavior until that execution policy is agreed; Jev still owns intent.
+   40,000 ( 0.00%)         .               .          .          .                   const auto price = side == Common::Side::BUY ? bbo->ask_price_
+        .                  .               .          .          .                                                                                                               : bbo->bid_price_;
+   60,000 ( 0.00%)    20,000 ( 0.00%)      .          .          .                   if (price != Common::Price_INVALID) {
+  120,000 ( 0.00%)         .               .          .          .                       order_manager_.moveOpenOrder(decision.ticker_id_, price, side,
+3,540,000 ( 0.02%)   370,000 ( 0.01%) 20,010 ( 2.29%) .          .           => /home/wangyuk/build/jev-quant/ttt-bench-profiling/src/trading/strategy/order_manager.cpp:Trading::OrderManager::moveOpenOrder(unsigned int, long, Common::Side, unsigned int) (20,000x)
+        .                  .               .          .          .                                                                                 decision_order_quantity_);
+        .                  .               .          .          .                   }
+        .                  .               .          .          .               } else if (decision.intent_ == JevIntent::CLOSE) {
+        .                  .               .          .          .                   const auto& position = position_keeper_.getPositionInfo(decision.ticker_id_);
+        .                  .               .          .          .                   if (position.position_ != 0) {
+        .                  .               .          .          .                       const auto side = position.position_ > 0 ? Common::Side::SELL
+        .                  .               .          .          .                                                                                                           : Common::Side::BUY;
+        .                  .               .          .          .                       const auto price = side == Common::Side::BUY ? bbo->ask_price_
+        .                  .               .          .          .                                                                                                                   : bbo->bid_price_;
+        .                  .               .          .          .                       if (price != Common::Price_INVALID) {
+        .                  .               .          .          .                           order_manager_.moveCloseOrder(decision.ticker_id_, price, side,
+        .                  .               .          .          .                                                                                       decision_order_quantity_);
+        .                  .               .          .          .                       }
+        .                  .               .          .          .                   }
+        .                  .               .          .          .               }
+   60,000 ( 0.00%)         .               .          .          .               recordLatency("ttt_decision_to_order", decision.evaluation_id_,
+   20,000 ( 0.00%)         .               .          .          .                             decision.ticker_id_,
+        .                  .               .          .          .                             Common::nowSteadyNs() - decision_to_order_start_ns);
+        .                  .               .          .          .               onJevDecision(decision);
+  140,000 ( 0.00%)         .               .          .          .           }
+        .                  .               .          .          .           
+        .                  .               .          .          .           auto TradeEngine::registerEvaluation(Common::TickerId ticker_id,
+        .                  .               .          .          .                                                                                     std::uint64_t evaluation_id) -> void {
+  240,000 ( 0.00%)   120,000 ( 0.00%)      1 ( 0.00%) .          .               if (ticker_id >= latest_evaluation_ids_.size() || evaluation_id == 0) {
+        .                  .               .          .          .                   throw std::invalid_argument("Invalid Jev evaluation registration");
+        .                  .               .          .          .               }
+        .                  .               .          .          .               latest_evaluation_ids_.at(ticker_id) = evaluation_id;
+        .                  .               .          .          .           }
+        .                  .               .          .          .           
+        .                  .               .          .          .           auto TradeEngine::attachJevEvaluationQueue(
+        .                  .               .          .          .                   JevEvaluationStateLFQueue* evaluations,
+        5 ( 0.00%)         .               .          .          .                   std::chrono::milliseconds interval, Common::TickerId ticker_id) -> void {
+        6 ( 0.00%)         3 ( 0.00%)      .          .          .               if (evaluations == nullptr || interval.count() < 0 ||
+        .                  .               .          .          .                       ticker_id >= ticker_order_books_.size()) {
+        .                  .               .          .          .                   throw std::invalid_argument("Invalid Jev evaluation queue configuration");
+        .                  .               .          .          .               }
+        2 ( 0.00%)         .               .          .          .               outgoing_jev_evaluations_ = evaluations;
+        1 ( 0.00%)         .               .          .          .               jev_evaluation_interval_ = interval;
+        1 ( 0.00%)         .               .          .          .               jev_ticker_id_ = ticker_id;
+        2 ( 0.00%)         .               .          .          .               next_jev_evaluation_at_ = std::chrono::steady_clock::now();
+       31 ( 0.00%)         3 ( 0.00%)      1 ( 0.00%) 2 ( 0.00%) 1 ( 0.00%)  => ???:0x000000000010c8d0 (1x)
+        4 ( 0.00%)         .               .          .          .           }
+        .                  .               .          .          .           
+  720,000 ( 0.00%)         .               .          .          .           auto TradeEngine::scheduleJevEvaluation() -> bool {
+  120,000 ( 0.00%)    60,000 ( 0.00%)      .          .          .               if (single_order_venue_ && !venue_ready_.load()) return false;
+  120,000 ( 0.00%)    60,000 ( 0.00%)      4 ( 0.00%) .          .               if (outgoing_jev_evaluations_ == nullptr ||
+  480,000 ( 0.00%)   120,000 ( 0.00%)      .          .          .                       !feature_engines_.at(jev_ticker_id_).features().valid_ ||
+20,640,000 ( 0.13%) 7,260,000 ( 0.18%) 125,062 (14.32%) 120,000 ( 5.38%) .           => src/trading/strategy/trade_engine.cpp:Trading::TradeEngine::scheduleJevEvaluation() [clone .part.0] (60,000x)
+   60,000 ( 0.00%)         .               .          .          .                       std::chrono::steady_clock::now() < next_jev_evaluation_at_) {
+1,860,000 ( 0.01%)   180,000 ( 0.00%)      1 ( 0.00%) 120,000 ( 5.38%) 39 ( 0.02%)  => ???:0x000000000010c8d0 (60,000x)
+        .                  .               .          .          .                   return false;
+        .                  .               .          .          .               }
+        .                  .               .          .          .           
+  180,000 ( 0.00%)         .               .          .          .               const auto evaluation_id = next_evaluation_id_++;
+  360,000 ( 0.00%)         .               .          .          .               auto state = buildJevEvaluationState(jev_ticker_id_, evaluation_id);
+10,860,000 ( 0.07%) 3,420,000 ( 0.08%) 60,113 ( 6.88%) .          .           => src/trading/strategy/trade_engine.cpp:Trading::TradeEngine::buildJevEvaluationState(unsigned int, unsigned long) const (60,000x)
+   60,000 ( 0.00%)         .               .          .          .               auto* slot = outgoing_jev_evaluations_->tryGetNextToWriteTo();
+  120,000 ( 0.00%)    60,000 ( 0.00%)      .          .          .               if (slot == nullptr) {
+        .                  .               .          .          .                   std::terminate();
+        .                  .               .          .          .               }
+   60,000 ( 0.00%)         .               .          .          .               registerEvaluation(jev_ticker_id_, evaluation_id);
+3,360,000 ( 0.02%) 3,120,000 ( 0.08%) 60,012 ( 6.87%) .          .               *slot = state;
+   60,000 ( 0.00%)         .               .          .          .               outgoing_jev_evaluations_->updateWriteIndex();
+  120,000 ( 0.00%)    60,000 ( 0.00%)      .          .          .               if (log_handle_) {
+        .                  .               .          .          .                   log_handle_->logFixed(Common::LogLevel::INFO,
+        .                  .               .          .          .                                         [&](Common::LogWriter& out) {
+        .                  .               .          .          .                                             out.append("event=evaluation_enqueued client_id=")
+        .                  .               .          .          .                                                     .append(client_id_)
+        .                  .               .          .          .                                                     .append(" evaluation_id=")
+        .                  .               .          .          .                                                     .append(evaluation_id)
+        .                  .               .          .          .                                                     .append(" ticker_id=")
+        .                  .               .          .          .                                                     .append(jev_ticker_id_);
+        .                  .               .          .          .                                         });
+        .                  .               .          .          .               }
+  120,000 ( 0.00%)         .               .          .          .               next_jev_evaluation_at_ = std::chrono::steady_clock::now() +
+1,860,000 ( 0.01%)   180,000 ( 0.00%)      2 ( 0.00%) 120,000 ( 5.38%) .           => ???:0x000000000010c8d0 (60,000x)
+        .                  .               .          .          .                                                                     jev_evaluation_interval_;
+        .                  .               .          .          .               return true;
+  720,000 ( 0.00%)    60,000 ( 0.00%)  4,934 ( 0.56%) .          .           }
+        .                  .               .          .          .           
+        .                  .               .          .          .           auto TradeEngine::buildJevEvaluationState(
+        .                  .               .          .          .                   Common::TickerId ticker_id, std::uint64_t evaluation_id) const
+  540,000 ( 0.00%)         .               .          .          .                   -> JevEvaluationState {
+  420,000 ( 0.00%)   120,000 ( 0.00%)      .          .          .               if (ticker_id >= ticker_order_books_.size() || evaluation_id == 0) {
+        .                  .               .          .          .                   throw std::invalid_argument("Invalid Jev evaluation state request");
+        .                  .               .          .          .               }
+        .                  .               .          .          .           
+3,360,000 ( 0.02%) 3,120,000 ( 0.08%) 60,033 ( 6.87%) .          .               JevEvaluationState state;
+   60,000 ( 0.00%)         .               .          .          .               double pnl_factor = 1.0;
+  240,000 ( 0.00%)         .               .          .          .               state.account_ = account_state_;
+  120,000 ( 0.00%)    60,000 ( 0.00%)      .          .          .               if (single_order_venue_) {
+        .                  .               .          .          .                   std::scoped_lock lock(venue_mutex_);
+        .                  .               .          .          .                   state.price_scale_ = 100000000.0;
+        .                  .               .          .          .                   state.pnl_before_fees_ = true;
+        .                  .               .          .          .                   state.account_ = venue_account_;
+        .                  .               .          .          .                   pnl_factor = venue_multiplier_ / state.price_scale_;
+        .                  .               .          .          .               }
+  120,000 ( 0.00%)         .               .          .          .               state.evaluation_id_ = evaluation_id;
+  120,000 ( 0.00%)         .               .          .          .               state.ticker_id_ = ticker_id;
+1,680,000 ( 0.01%)         .               .          .          .               state.depth_snapshot_ = *ticker_order_books_.at(ticker_id)->getDepthSnapshot();
+  540,000 ( 0.00%)         .               .          .          .               state.market_features_ = feature_engines_.at(ticker_id).features();
+  120,000 ( 0.00%)    60,000 ( 0.00%)     78 ( 0.01%) .          .               if (!state.market_features_.valid_) {
+        .                  .               .          .          .                   throw std::logic_error("Cannot build Jev evaluation state without valid market features");
+        .                  .               .          .          .               }
+        .                  .               .          .          .           
+        .                  .               .          .          .               const auto& position = position_keeper_.getPositionInfo(ticker_id);
+  120,000 ( 0.00%)         .               .          .          .               state.position_.net_position_ = position.position_;
+  180,000 ( 0.00%)         .               .          .          .               state.position_.today_qty_ = position.todayQty();
+        .                  .               .          .          .               state.position_.yesterday_qty_ = position.yesterdayQty();
+   60,000 ( 0.00%)         .               .          .          .               state.position_.average_entry_price_ = position.averageEntryPrice();
+  240,000 ( 0.00%)         .               .          .          .               state.position_.realized_pnl_ = position.realized_pnl_ * pnl_factor;
+        .                  .               .          .          .               state.position_.unrealized_pnl_ = position.unrealized_pnl_ * pnl_factor;
+        .                  .               .          .          .           
+        .                  .               .          .          .               const auto& bid_order =
+        .                  .               .          .          .                       order_manager_.getOrder(ticker_id, Common::Side::BUY);
+        .                  .               .          .          .               const auto& ask_order =
+        .                  .               .          .          .                       order_manager_.getOrder(ticker_id, Common::Side::SELL);
+        .                  .               .          .          .               const auto toWorkingOrder = [](const OMOrder& order) {
+  480,000 ( 0.00%)         .               .          .          .                   return WorkingOrderState{order.order_id_, order.side_, order.price_,
+  240,000 ( 0.00%)         .               .          .          .                                                                     order.qty_, order.order_type_, order.offset_,
+  120,000 ( 0.00%)         .               .          .          .                                                                     order.order_state_};
+        .                  .               .          .          .               };
+  780,000 ( 0.01%)         .               .          .          .               state.working_orders_ = {toWorkingOrder(bid_order),
+        .                  .               .          .          .                                                                 toWorkingOrder(ask_order)};
+        .                  .               .          .          .               const auto& limits = risk_manager_.limits();
+  180,000 ( 0.00%)         .               .          .          .               state.risk_ = RiskState{limits.max_order_size_, limits.max_position_,
+   60,000 ( 0.00%)         .               .          .          .                                                               limits.max_loss_};
+        .                  .               .          .          .               return state;
+  540,000 ( 0.00%)         .               .          .          .           }
+        .                  .               .          .          .           
+        .                  .               .          .          .           auto TradeEngine::sendClientRequest(const Exchange::ClientRequest& request)
+  260,000 ( 0.00%)         .               .          .          .                   -> void {
+   20,000 ( 0.00%)         .               .          .          .               auto* slot = outgoing_requests_->tryGetNextToWriteTo();
+   40,000 ( 0.00%)    20,000 ( 0.00%)      .          .          .               if (slot == nullptr) {
+        .                  .               .          .          .                   std::terminate();
+        .                  .               .          .          .               }
+  180,000 ( 0.00%)         .               .          .          .               *slot = request;
+   20,000 ( 0.00%)         .               .          .          .               outgoing_requests_->updateWriteIndex();
+   40,000 ( 0.00%)    20,000 ( 0.00%)      1 ( 0.00%) .          .               if (log_handle_) {
+        .                  .               .          .          .                   log_handle_->logFixed(Common::LogLevel::INFO,
+        .                  .               .          .          .                                         [&](Common::LogWriter& out) {
+        .                  .               .          .          .                                             out.append("event=client_request_enqueued client_id=")
+        .                  .               .          .          .                                                     .append(client_id_)
+        .                  .               .          .          .                                                     .append(" ticker_id=")
+        .                  .               .          .          .                                                     .append(request.ticker_id_);
+        .                  .               .          .          .                                         });
+        .                  .               .          .          .               }
+  220,000 ( 0.00%)    20,000 ( 0.00%)      .          .          .           }
+        .                  .               .          .          .           
+        .                  .               .          .          .           }  // namespace Trading
+
+--------------------------------------------------------------------------------
+-- Auto-annotated source: /usr/include/c++/13/bits/stl_algobase.h
+--------------------------------------------------------------------------------
+Ir                     Bc                     Bcm             Bi Bim 
+
+-- line 225 ----------------------------------------
+            .                      .               .          .          .              *
+            .                      .               .          .          .              *  This is the simple classic generic implementation.  It will work on
+            .                      .               .          .          .              *  temporary expressions, since they are only evaluated once, unlike a
+            .                      .               .          .          .              *  preprocessor macro.
+            .                      .               .          .          .             */
+            .                      .               .          .          .             template<typename _Tp>
+            .                      .               .          .          .               _GLIBCXX14_CONSTEXPR
+            .                      .               .          .          .               inline const _Tp&
+       64,059 ( 0.00%)             .               .          .          .               min(const _Tp& __a, const _Tp& __b)
+            .                      .               .          .          .               {
+            .                      .               .          .          .                 // concept requirements
+            .                      .               .          .          .                 __glibcxx_function_requires(_LessThanComparableConcept<_Tp>)
+            .                      .               .          .          .                 //return __b < __a ? __b : __a;
+      192,178 ( 0.00%)             .               .          .          .                 if (__b < __a)
+            .                      .               .          .          .           	return __b;
+            .                      .               .          .          .                 return __a;
+            .                      .               .          .          .               }
+            .                      .               .          .          .           
+            .                      .               .          .          .             /**
+            .                      .               .          .          .              *  @brief This does what you think it does.
+            .                      .               .          .          .              *  @ingroup sorting_algorithms
+            .                      .               .          .          .              *  @param  __a  A thing of arbitrary type.
+-- line 246 ----------------------------------------
+-- line 254 ----------------------------------------
+            .                      .               .          .          .             template<typename _Tp>
+            .                      .               .          .          .               _GLIBCXX14_CONSTEXPR
+            .                      .               .          .          .               inline const _Tp&
+            .                      .               .          .          .               max(const _Tp& __a, const _Tp& __b)
+            .                      .               .          .          .               {
+            .                      .               .          .          .                 // concept requirements
+            .                      .               .          .          .                 __glibcxx_function_requires(_LessThanComparableConcept<_Tp>)
+            .                      .               .          .          .                 //return  __a < __b ? __b : __a;
+          150 ( 0.00%)            57 ( 0.00%)      5 ( 0.00%) .          .                 if (__a < __b)
+            .                      .               .          .          .           	return __b;
+            .                      .               .          .          .                 return __a;
+            .                      .               .          .          .               }
+            .                      .               .          .          .           
+            .                      .               .          .          .             /**
+            .                      .               .          .          .              *  @brief This does what you think it does.
+            .                      .               .          .          .              *  @ingroup sorting_algorithms
+            .                      .               .          .          .              *  @param  __a  A thing of arbitrary type.
+-- line 270 ----------------------------------------
+-- line 415 ----------------------------------------
+            .                      .               .          .          .           	      ++__result;
+            .                      .               .          .          .           	    }
+            .                      .               .          .          .           	  return __result;
+            .                      .               .          .          .           	}
+            .                      .               .          .          .           
+            .                      .               .          .          .                 template<typename _Tp, typename _Up>
+            .                      .               .          .          .           	static void
+            .                      .               .          .          .           	__assign_one(_Tp* __to, _Up* __from)
+            4 ( 0.00%)             .               .          .          .           	{ *__to = std::move(*__from); }
+            .                      .               .          .          .               };
+            .                      .               .          .          .           #endif
+            .                      .               .          .          .           
+            .                      .               .          .          .             template<bool _IsMove>
+            .                      .               .          .          .               struct __copy_move<_IsMove, true, random_access_iterator_tag>
+            .                      .               .          .          .               {
+            .                      .               .          .          .                 template<typename _Tp, typename _Up>
+            .                      .               .          .          .           	_GLIBCXX20_CONSTEXPR
+            .                      .               .          .          .           	static _Up*
+            .                      .               .          .          .           	__copy_m(_Tp* __first, _Tp* __last, _Up* __result)
+            .                      .               .          .          .           	{
+            8 ( 0.00%)             .               .          .          .           	  const ptrdiff_t _Num = __last - __first;
+            8 ( 0.00%)             4 ( 0.00%)      .          .          .           	  if (__builtin_expect(_Num > 1, true))
+           16 ( 0.00%)             .               .          .          .           	    __builtin_memmove(__result, __first, sizeof(_Tp) * _Num);
+      157,616 ( 0.00%)       157,512 ( 0.00%)     17 ( 0.00%) 4 ( 0.00%) 4 ( 0.00%)  => ???:0x000000000010c9d0 (4x)
+            .                      .               .          .          .           	  else if (_Num == 1)
+            .                      .               .          .          .           	    std::__copy_move<_IsMove, false, random_access_iterator_tag>::
+            .                      .               .          .          .           	      __assign_one(__result, __first);
+            4 ( 0.00%)             .               .          .          .           	  return __result + _Num;
+            .                      .               .          .          .           	}
+            .                      .               .          .          .               };
+            .                      .               .          .          .           
+            .                      .               .          .          .           _GLIBCXX_BEGIN_NAMESPACE_CONTAINER
+            .                      .               .          .          .           
+            .                      .               .          .          .             template<typename _Tp, typename _Ref, typename _Ptr>
+            .                      .               .          .          .               struct _Deque_iterator;
+            .                      .               .          .          .           
+-- line 449 ----------------------------------------
+-- line 738 ----------------------------------------
+            .                      .               .          .          .             template<bool _IsMove>
+            .                      .               .          .          .               struct __copy_move_backward<_IsMove, true, random_access_iterator_tag>
+            .                      .               .          .          .               {
+            .                      .               .          .          .                 template<typename _Tp, typename _Up>
+            .                      .               .          .          .           	_GLIBCXX20_CONSTEXPR
+            .                      .               .          .          .           	static _Up*
+            .                      .               .          .          .           	__copy_move_b(_Tp* __first, _Tp* __last, _Up* __result)
+            .                      .               .          .          .           	{
+           10 ( 0.00%)             .               .          .          .           	  const ptrdiff_t _Num = __last - __first;
+           10 ( 0.00%)             5 ( 0.00%)      2 ( 0.00%) .          .           	  if (__builtin_expect(_Num > 1, true))
+           15 ( 0.00%)             .               .          .          .           	    __builtin_memmove(__result - _Num, __first, sizeof(_Tp) * _Num);
+           51 ( 0.00%)             9 ( 0.00%)      4 ( 0.00%) 3 ( 0.00%) .           => ???:0x000000000010c9d0 (3x)
+            2 ( 0.00%)             2 ( 0.00%)      .          .          .           	  else if (_Num == 1)
+            .                      .               .          .          .           	    std::__copy_move<_IsMove, false, random_access_iterator_tag>::
+            .                      .               .          .          .           	      __assign_one(__result - 1, __first);
+            .                      .               .          .          .           	  return __result - _Num;
+            .                      .               .          .          .           	}
+            .                      .               .          .          .               };
+            .                      .               .          .          .           
+            .                      .               .          .          .             template<bool _IsMove, typename _BI1, typename _BI2>
+            .                      .               .          .          .               _GLIBCXX20_CONSTEXPR
+-- line 757 ----------------------------------------
+-- line 910 ----------------------------------------
+            .                      .               .          .          .           
+            .                      .               .          .          .             template<typename _ForwardIterator, typename _Tp>
+            .                      .               .          .          .               _GLIBCXX20_CONSTEXPR
+            .                      .               .          .          .               inline typename
+            .                      .               .          .          .               __gnu_cxx::__enable_if<!__is_scalar<_Tp>::__value, void>::__type
+            .                      .               .          .          .               __fill_a1(_ForwardIterator __first, _ForwardIterator __last,
+            .                      .               .          .          .           	      const _Tp& __value)
+            .                      .               .          .          .               {
+4,423,800,000 (28.73%) 1,474,600,000 (35.65%) 60,053 ( 6.88%) .          .                 for (; __first != __last; ++__first)
+2,949,120,000 (19.16%)             .               .          .          .           	*__first = __value;
+            .                      .               .          .          .               }
+            .                      .               .          .          .           
+            .                      .               .          .          .             template<typename _ForwardIterator, typename _Tp>
+            .                      .               .          .          .               _GLIBCXX20_CONSTEXPR
+            .                      .               .          .          .               inline typename
+            .                      .               .          .          .               __gnu_cxx::__enable_if<__is_scalar<_Tp>::__value, void>::__type
+            .                      .               .          .          .               __fill_a1(_ForwardIterator __first, _ForwardIterator __last,
+            .                      .               .          .          .           	      const _Tp& __value)
+-- line 927 ----------------------------------------
+-- line 1120 ----------------------------------------
+            .                      .               .          .          .           #if __cplusplus >= 201103L
+            .                      .               .          .          .                 static_assert(is_integral<_Size>{}, "fill_n must pass integral size");
+            .                      .               .          .          .           #endif
+            .                      .               .          .          .                 if (__n <= 0)
+            .                      .               .          .          .           	return __first;
+            .                      .               .          .          .           
+            .                      .               .          .          .                 __glibcxx_requires_can_increment(__first, __n);
+            .                      .               .          .          .           
+       40,000 ( 0.00%)             .               .          .          .                 std::__fill_a(__first, __first + __n, __value);
+            .                      .               .          .          .                 return __first + __n;
+            .                      .               .          .          .               }
+            .                      .               .          .          .           
+            .                      .               .          .          .             /**
+            .                      .               .          .          .              *  @brief Fills the range [first,first+n) with copies of value.
+            .                      .               .          .          .              *  @ingroup mutating_algorithms
+            .                      .               .          .          .              *  @param  __first  An output iterator.
+            .                      .               .          .          .              *  @param  __n      The count of copies to perform.
+-- line 1136 ----------------------------------------
+-- line 1510 ----------------------------------------
+            .                      .               .          .          .           
+            .                      .               .          .          .             /// This is a helper function for the sort routines and for random.tcc.
+            .                      .               .          .          .             //  Precondition: __n > 0.
+            .                      .               .          .          .             template<typename _Tp>
+            .                      .               .          .          .               inline _GLIBCXX_CONSTEXPR _Tp
+            .                      .               .          .          .               __lg(_Tp __n)
+            .                      .               .          .          .               {
+            .                      .               .          .          .           #if __cplusplus >= 201402L
+            8 ( 0.00%)             .               .          .          .                 return std::__bit_width(make_unsigned_t<_Tp>(__n)) - 1;
+            .                      .               .          .          .           #else
+            .                      .               .          .          .                 // Use +__n so it promotes to at least int.
+            .                      .               .          .          .                 return (sizeof(+__n) * __CHAR_BIT__ - 1)
+            .                      .               .          .          .           	       - (sizeof(+__n) == sizeof(long long)
+            .                      .               .          .          .           		    ? __builtin_clzll(+__n)
+            .                      .               .          .          .           		    : (sizeof(+__n) == sizeof(long)
+            .                      .               .          .          .           			 ? __builtin_clzl(+__n)
+            .                      .               .          .          .           			 : __builtin_clz(+__n)));
+-- line 1526 ----------------------------------------
+
+--------------------------------------------------------------------------------
+-- Auto-annotated source: src/trading/strategy/market_order_book.h
+--------------------------------------------------------------------------------
+Ir                     Bc                     Bcm             Bi              Bim        
+
+-- line 84 ----------------------------------------
+            .                      .               .               .          .             public:
+            .                      .               .               .          .               enum class BookMode : std::uint8_t {
+            .                      .               .               .          .                   UNINITIALIZED = 0,
+            .                      .               .               .          .                   INCREMENTAL = 1,
+            .                      .               .               .          .                   DEPTH_SNAPSHOT = 2,
+            .                      .               .               .          .               };
+            .                      .               .               .          .           
+            .                      .               .               .          .               explicit MarketOrderBook(Common::TickerId ticker_id)
+            8 ( 0.00%)             .               .               .          .                       : ticker_id_(ticker_id),
+            .                      .               .               .          .                         order_pool_(kMaxBookOrderSlots),
+            .                      .               .               .          .                         bid_level_pool_(kMaxBookLevelSlotsPerSide),
+          234 ( 0.00%)             .               .               .          .                         ask_level_pool_(kMaxBookLevelSlotsPerSide) {}
+            .                      .               .               .          .           
+            .                      .               .               .          .               MarketOrderBook(const MarketOrderBook&) = delete;
+            .                      .               .               .          .               MarketOrderBook& operator=(const MarketOrderBook&) = delete;
+            .                      .               .               .          .               MarketOrderBook(MarketOrderBook&&) = delete;
+            .                      .               .               .          .               MarketOrderBook& operator=(MarketOrderBook&&) = delete;
+            .                      .               .               .          .           
+            .                      .               .               .          .               auto onMarketUpdate(const Exchange::MarketUpdate& update) -> void {
+      160,000 ( 0.00%)        20,000 ( 0.00%)      0          20,000 ( 0.90%) 1 ( 0.00%)          switch (update.type_) {
+            .                      .               .               .          .                       case Exchange::MarketUpdateType::ADD:
+            .                      .               .               .          .                           requireIncrementalMode();
+            .                      .               .               .          .                           addOrder(update);
+            .                      .               .               .          .                           break;
+            .                      .               .               .          .                       case Exchange::MarketUpdateType::MODIFY:
+            .                      .               .               .          .                           requireIncrementalMode();
+            .                      .               .               .          .                           modifyOrder(update);
+            .                      .               .               .          .                           break;
+-- line 111 ----------------------------------------
+-- line 133 ----------------------------------------
+            .                      .               .               .          .                   updateBBOFromIncrementalBook();
+            .                      .               .               .          .               }
+            .                      .               .               .          .           
+            .                      .               .               .          .               auto onDepthSnapshot(const Exchange::DepthSnapshot& snapshot) -> void {
+            .                      .               .               .          .                   if (mode_ == BookMode::INCREMENTAL) {
+            .                      .               .               .          .                       throw std::logic_error(
+            .                      .               .               .          .                               "MarketOrderBook cannot mix incremental and depth snapshot updates");
+            .                      .               .               .          .                   }
+       40,000 ( 0.00%)             .               .               .          .                   clearIncrementalBook();
+15,238,200,000 (98.98%) 4,096,120,000 (99.03%) 80,088 ( 9.17%)      .          .           => src/trading/strategy/market_order_book.h:Trading::MarketOrderBook::clearIncrementalBook() (20,000x)
+      520,000 ( 0.00%)             .               .               .          .                   depth_snapshot_ = snapshot;
+       20,000 ( 0.00%)             .               .               .          .                   mode_ = BookMode::DEPTH_SNAPSHOT;
+            .                      .               .               .          .                   updateBBOFromDepthSnapshot();
+       20,000 ( 0.00%)             .               .               .          .               }
+            .                      .               .               .          .           
+            .                      .               .               .          .               [[nodiscard]] auto getBBO() const noexcept -> const BBO* {
+            .                      .               .               .          .                   return &bbo_;
+            .                      .               .               .          .               }
+            .                      .               .               .          .           
+            .                      .               .               .          .               [[nodiscard]] auto getDepthSnapshot() const noexcept
+            .                      .               .               .          .                       -> const Exchange::DepthSnapshot* {
+            .                      .               .               .          .                   return &depth_snapshot_;
+-- line 153 ----------------------------------------
+-- line 210 ----------------------------------------
+            .                      .               .               .          .           
+            .                      .               .               .          .               /// Open-addressed slot array mapping keys to pooled node pointers with
+            .                      .               .               .          .               /// linear probing. Keys are hashed by masking (the slot count is a power
+            .                      .               .               .          .               /// of two); callers enforce the load-factor ceiling before insert, so a
+            .                      .               .               .          .               /// free slot always exists and probe loops terminate. Deletion performs
+            .                      .               .               .          .               /// backward-shift compaction so no probe chain is ever broken and no
+            .                      .               .               .          .               /// tombstones accumulate. insert() requires the key to be absent.
+            .                      .               .               .          .               template <typename KeyT, typename NodeT, std::size_t kSlots>
+          120 ( 0.00%)             .               .               .          .               class SlotArray final {
+    9,437,640 ( 0.06%)     9,437,280 ( 0.23%)     36 ( 0.00%)     24 ( 0.00%) 1 ( 0.00%)  => ???:0x000000000010c700 (24x)
+            .                      .               .               .          .                   static_assert((kSlots & (kSlots - 1)) == 0, "Slot count must be a power of two");
+            .                      .               .               .          .           
+            .                      .               .               .          .                 public:
+            .                      .               .               .          .                   struct Entry {
+            .                      .               .               .          .                       KeyT key_ = {};
+            .                      .               .               .          .                       NodeT* node_ = nullptr;
+            .                      .               .               .          .                   };
+            .                      .               .               .          .           
+-- line 226 ----------------------------------------
+-- line 276 ----------------------------------------
+            .                      .               .               .          .                       --live_count_;
+            .                      .               .               .          .                       return removed;
+            .                      .               .               .          .                   }
+            .                      .               .               .          .           
+            .                      .               .               .          .                   /// Mark every block free without clearing the pooled nodes' memory:
+            .                      .               .               .          .                   /// the slot array itself is reset, the pool keeps its storage warm.
+            .                      .               .               .          .                   template <typename Visitor>
+            .                      .               .               .          .                   auto forEachNode(Visitor&& visitor) noexcept -> void {
+3,932,260,000 (25.54%) 1,310,740,000 (31.69%) 20,002 ( 2.29%)      .          .                       for (auto& entry : entries_) {
+3,932,160,000 (25.54%) 1,310,720,000 (31.69%)     30 ( 0.00%)      .          .                           if (entry.node_ != nullptr) {
+            .                      .               .               .          .                               visitor(entry.node_);
+            .                      .               .               .          .                           }
+            .                      .               .               .          .                       }
+            .                      .               .               .          .                   }
+            .                      .               .               .          .           
+            .                      .               .               .          .                   auto clear() noexcept -> void {
+            .                      .               .               .          .                       entries_.fill(Entry{});
+       60,000 ( 0.00%)             .               .               .          .                       live_count_ = 0;
+            .                      .               .               .          .                   }
+            .                      .               .               .          .           
+            .                      .               .               .          .                   [[nodiscard]] auto liveCount() const noexcept -> std::size_t {
+            .                      .               .               .          .                       return live_count_;
+            .                      .               .               .          .                   }
+            .                      .               .               .          .           
+            .                      .               .               .          .                 private:
+            .                      .               .               .          .                   static constexpr std::size_t kMask = kSlots - 1;
+-- line 301 ----------------------------------------
+-- line 467 ----------------------------------------
+            .                      .               .               .          .                       if (head == level) {
+            .                      .               .               .          .                           head = level->next_level_;
+            .                      .               .               .          .                       }
+            .                      .               .               .          .                   }
+            .                      .               .               .          .                   level->prev_level_ = level->next_level_ = nullptr;
+            .                      .               .               .          .               }
+            .                      .               .               .          .           
+            .                      .               .               .          .               auto clearSideLevels(Common::Side side) noexcept -> void {
+       40,000 ( 0.00%)             .               .               .          .                   PriceLevel* head = levelHead(side);
+       80,000 ( 0.00%)        40,000 ( 0.00%)      3 ( 0.00%)      .          .                   if (head != nullptr) {
+            .                      .               .               .          .                       PriceLevel* level = head->next_level_;
+            .                      .               .               .          .                       while (level != head) {
+            .                      .               .               .          .                           PriceLevel* next = level->next_level_;
+            .                      .               .               .          .                           levelPool(side).deallocate(level);
+            .                      .               .               .          .                           level = next;
+            .                      .               .               .          .                       }
+            .                      .               .               .          .                       levelPool(side).deallocate(head);
+            .                      .               .               .          .                   }
+       40,000 ( 0.00%)             .               .               .          .                   levelHead(side) = nullptr;
+            .                      .               .               .          .                   levelSlots(side).clear();
+            .                      .               .               .          .               }
+            .                      .               .               .          .           
+            .                      .               .               .          .               /// Reset the incremental book: every order and level block is marked free
+            .                      .               .               .          .               /// in its pool without clearing the block memory, so subsequent
+            .                      .               .               .          .               /// allocations reuse the same storage.
+      260,000 ( 0.00%)             .               .               .          .               auto clearIncrementalBook() noexcept -> void {
+            .                      .               .               .          .                   order_slots_.forEachNode(
+            .                      .               .               .          .                           [this](BookOrder* order) { order_pool_.deallocate(order); });
+            .                      .               .               .          .                   order_slots_.clear();
+            .                      .               .               .          .                   clearSideLevels(Common::Side::BUY);
+            .                      .               .               .          .                   clearSideLevels(Common::Side::SELL);
+       60,000 ( 0.00%)             .               .               .          .                   bbo_ = BBO{};
+      220,000 ( 0.00%)        20,000 ( 0.00%)      .               .          .               }
+            .                      .               .               .          .           
+            .                      .               .               .          .               /// BBO is read straight off the sorted level list head pointers in O(1).
+            .                      .               .               .          .               auto updateBBOFromIncrementalBook() noexcept -> void {
+            .                      .               .               .          .                   if (bids_head_ != nullptr) {
+            .                      .               .               .          .                       bbo_.bid_price_ = bids_head_->price_;
+            .                      .               .               .          .                       bbo_.bid_qty_ = bids_head_->qty_;
+            .                      .               .               .          .                   } else {
+            .                      .               .               .          .                       bbo_.bid_price_ = Common::Price_INVALID;
+-- line 507 ----------------------------------------
+-- line 514 ----------------------------------------
+            .                      .               .               .          .                       bbo_.ask_price_ = Common::Price_INVALID;
+            .                      .               .               .          .                       bbo_.ask_qty_ = Common::Qty_INVALID;
+            .                      .               .               .          .                   }
+            .                      .               .               .          .               }
+            .                      .               .               .          .           
+            .                      .               .               .          .               auto updateBBOFromDepthSnapshot() -> void {
+            .                      .               .               .          .                   const auto& bid = depth_snapshot_.bids_.front();
+            .                      .               .               .          .                   const auto& ask = depth_snapshot_.asks_.front();
+       60,000 ( 0.00%)             .               .               .          .                   bbo_.bid_price_ = bid.price_;
+       80,000 ( 0.00%)             .               .               .          .                   bbo_.bid_qty_ = bid.qty_;
+            .                      .               .               .          .                   bbo_.ask_price_ = ask.price_;
+            .                      .               .               .          .                   bbo_.ask_qty_ = ask.qty_;
+            .                      .               .               .          .               }
+            .                      .               .               .          .           
+            .                      .               .               .          .               static auto modeToString(BookMode mode) -> const char* {
+            .                      .               .               .          .                   switch (mode) {
+            .                      .               .               .          .                       case BookMode::UNINITIALIZED:
+            .                      .               .               .          .                           return "UNINITIALIZED";
+-- line 531 ----------------------------------------
+-- line 541 ----------------------------------------
+            .                      .               .               .          .                   if (mode_ == BookMode::DEPTH_SNAPSHOT) {
+            .                      .               .               .          .                       throw std::logic_error(
+            .                      .               .               .          .                               "MarketOrderBook cannot mix depth snapshot and incremental updates");
+            .                      .               .               .          .                   }
+            .                      .               .               .          .                   mode_ = BookMode::INCREMENTAL;
+            .                      .               .               .          .               }
+            .                      .               .               .          .           
+            .                      .               .               .          .               auto requireDepthSnapshotMode() -> void {
+       40,000 ( 0.00%)        20,000 ( 0.00%)      .               .          .                   if (mode_ == BookMode::INCREMENTAL) {
+            .                      .               .               .          .                       throw std::logic_error(
+            .                      .               .               .          .                               "MarketOrderBook cannot mix incremental and depth snapshot updates");
+            .                      .               .               .          .                   }
+       20,000 ( 0.00%)             .               .               .          .                   mode_ = BookMode::DEPTH_SNAPSHOT;
+            .                      .               .               .          .               }
+            .                      .               .               .          .           
+            .                      .               .               .          .               const Common::TickerId ticker_id_;
+            .                      .               .               .          .               BookMode mode_ = BookMode::UNINITIALIZED;
+            .                      .               .               .          .               Exchange::DepthSnapshot depth_snapshot_{};
+            .                      .               .               .          .               BBO bbo_{};
+            .                      .               .               .          .           
+            .                      .               .               .          .               Common::MemPool<BookOrder> order_pool_;
+-- line 561 ----------------------------------------
+
+--------------------------------------------------------------------------------
+Ir                      Bc                     Bcm              Bi              Bim        
+--------------------------------------------------------------------------------
+15,270,774,488 (99.19%) 4,104,000,198 (99.22%) 206,839 (23.68%) 20,000 ( 0.90%) 1 ( 0.00%)  events annotated
+

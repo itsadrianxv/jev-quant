@@ -1,0 +1,5 @@
+segment	count	mean_ns	p50_ns	p90_ns	p99_ns	max_ns
+ttt_decision_consumed	100000	30.57	30	31	81	33698
+ttt_decision_to_order	100000	61.25	50	70	210	35021
+ttt_market_data_consumed	100000	28.16	21	30	50	47596
+ttt_order_round_trip	100000	33.16	20	40	171	97296

@@ -1,0 +1,10 @@
+revision: 62daf73 (unmodified pipeline, PR 2 baseline)
+environment: laptop WSL2, kernel 6.18.40.1-microsoft, pinned CPU 15;
+absolute numbers comparable only within this environment (see
+docs/profiling/ttt-profiling-methodology.md)
+segment	count	mean_ns	p50_ns	p90_ns	p99_ns	max_ns
+ttt_decision_consumed	100000	30.57	30	31	81	33698
+ttt_decision_to_order	100000	61.25	50	70	210	35021
+ttt_market_data_consumed	100000	28.16	21	30	50	47596
+ttt_order_round_trip	100000	33.16	20	40	171	97296
+updates=100000 wall_ms=4545.94
