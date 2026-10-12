@@ -54,7 +54,9 @@ class SimexLiveRunnerTest(unittest.TestCase):
                                                   "participant_simulator": {"enabled": True}}), encoding="utf-8")
         self.args = type("Args", (), {"server": self.server, "server_config": self.server_config,
                                         "trading": self.trading, "config": self.config,
-                                        "duration": 1, "output": self.root / "output"})()
+                                        "duration": 1, "output": self.root / "output",
+                                        "max_provider_calls": 0, "capture": False,
+                                        "working_dir": None})()
 
     def trading_script(self, delay, ready):
         self.trading.write_text(TRADING.format(delay=delay, ready=int(ready),
