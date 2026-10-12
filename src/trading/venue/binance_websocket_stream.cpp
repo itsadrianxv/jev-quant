@@ -57,9 +57,15 @@ auto BinanceWebSocketStream::run() -> void {
         }
         state_changed_.notify_all();
         while (!stopping_.load(std::memory_order_acquire)) {
-            beast::flat_buffer buffer;
-            ws.read(buffer);
-            const auto message = nlohmann::json::parse(beast::buffers_to_string(buffer.data()));
+            ws.read(receive_buffer_);
+            const auto received = receive_buffer_.data();
+            const auto* first = static_cast<const char*>(received.data());
+            // Parse directly from the buffer's byte range: no intermediate
+            // string. The JSON DOM per message remains for now; a typed or
+            // SAX parse writing straight into the queue slot is the
+            // follow-up (mempool spec).
+            const auto message = nlohmann::json::parse(first, first + received.size());
+            receive_buffer_.clear();
             if (on_message_) on_message_(message);
         }
         beast::error_code ignored;

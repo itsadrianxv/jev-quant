@@ -6,6 +6,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <boost/beast/core.hpp>
 #include <nlohmann/json.hpp>
 namespace Trading {
 class BinanceWebSocketStream final {
@@ -29,7 +30,10 @@ class BinanceWebSocketStream final {
     bool connected_ = false;
     std::atomic<int> socket_fd_{-1};
     std::jthread worker_;
-};
+    /// Reused across reads: clear() resets the read range but keeps the
+    /// warmed-up storage, so steady-state reads do not allocate a buffer.
+    boost::beast::flat_buffer receive_buffer_;
+  };
 }
 
 
