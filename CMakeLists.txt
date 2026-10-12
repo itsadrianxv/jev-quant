@@ -172,6 +172,29 @@ target_compile_options(contract_tests PRIVATE -Wall -Wextra -Wpedantic)
 
 add_test(NAME contract_tests COMMAND contract_tests)
 
+# Deterministic participant-pipeline bench. The smoke drives a small fixed
+# load in-process with the mock decision provider (no network) and asserts
+# the per-segment TTT summary is printed at exit.
+add_executable(jev_bench src/tools/jev_bench.cpp)
+target_link_libraries(jev_bench PRIVATE jev_trading_core)
+target_compile_options(jev_bench PRIVATE -Wall -Wextra -Wpedantic)
+
+add_test(NAME bench_smoke
+                COMMAND jev_bench --updates 64
+                                        --out "${CMAKE_CURRENT_BINARY_DIR}/bench-smoke-logs")
+set_tests_properties(bench_smoke PROPERTIES PASS_REGULAR_EXPRESSION "ttt_market_data_consumed;ttt_order_round_trip")
+
+# The percentile analysis script is standard-library-only; verify it against
+# the committed fixture whenever an interpreter is available.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_FOUND)
+    add_test(NAME ttt_percentiles_fixture
+                    COMMAND ${Python3_EXECUTABLE}
+                            "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ttt_percentiles.py"
+                            "${CMAKE_CURRENT_SOURCE_DIR}/scripts/testdata/ttt-fixture.log"
+                            --check "${CMAKE_CURRENT_SOURCE_DIR}/scripts/testdata/ttt-fixture-expected.tsv")
+endif()
+
 if(JEV_ENABLE_SIMNOW)
     add_executable(simnow_tests tests/simnow_tests.cpp)
     target_link_libraries(simnow_tests PRIVATE jev_trading_core)
