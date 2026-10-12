@@ -207,11 +207,17 @@ endif()
 jev_add_gtest_test(unit_tests LABEL unit
         SOURCES tests/unit/position_keeper_test.cpp
                 tests/unit/risk_manager_test.cpp
-                tests/unit/lf_queue_test.cpp
+tests/unit/lf_queue_test.cpp
                 tests/unit/log_writer_test.cpp
                 tests/unit/mem_pool_test.cpp
                 tests/unit/market_order_book_test.cpp
-                tests/unit/binance_depth_book_test.cpp)
+                tests/unit/binance_depth_book_test.cpp
+                tests/unit/feature_engine_test.cpp
+                tests/unit/jev_decision_queue_test.cpp
+                tests/unit/jev_decision_request_test.cpp
+                tests/unit/jev_decision_parser_test.cpp
+                tests/unit/jev_variant_test.cpp
+                tests/unit/binance_um_futures_adapter_test.cpp)
 jev_add_gtest_test(component_tests LABEL component
         SOURCES tests/component/component_tests.cpp)
 jev_add_gtest_test(integration_tests LABEL integration

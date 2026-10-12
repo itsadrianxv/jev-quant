@@ -28,9 +28,7 @@
 #include "trading/strategy/trade_engine.h"
 #include "trading/market_data/market_data_consumer.h"
 #include "trading/order_gw/order_gateway.h"
-#include "tools/jev_variant.h"
 #include "simulated_venue.h"
-#include "trading/venue/venue_adapter.h"
 namespace {
 
 [[noreturn]] void checkFailure(const char* condition, const char* file,
@@ -42,37 +40,7 @@ namespace {
 
 #define CHECK(condition)                                                    \
     ((condition) ? static_cast<void>(0)                                       \
-                              : checkFailure(#condition, __FILE__, __LINE__))
-
-void testBinanceAdapterMapping() {
-    Trading::BinanceUmFuturesConfig config;
-    config.symbol = "BTCUSDT";
-    config.ticker_id = 0;
-    Exchange::ClientRequest request;
-    request.type_ = Exchange::ClientRequestType::NEW;
-    request.ticker_id_ = 0;
-    request.order_id_ = 42;
-    request.side_ = Common::Side::SELL;
-    request.qty_ = 3;
-    request.price_ = 100;
-    request.order_type_ = Common::OrderType::LIMIT;
-    request.offset_ = Common::OrderOffset::CLOSE_YESTERDAY;
-    const auto mapped = Trading::BinanceUmFuturesVenueAdapter::mapOrder(request, config);
-    CHECK(mapped.symbol == "BTCUSDT");
-    CHECK(mapped.side == "SELL");
-    CHECK(mapped.type == "LIMIT");
-    CHECK(mapped.time_in_force == "GTC");
-    CHECK(mapped.reduce_only);
-    CHECK(mapped.new_client_order_id == "42");
-    CHECK(Trading::BinanceUmFuturesVenueAdapter::mapOrderStatus("PARTIALLY_FILLED") ==
-          Exchange::ClientResponseType::ACCEPTED);
-    CHECK(Trading::BinanceUmFuturesVenueAdapter::mapOrderStatus("FILLED") ==
-          Exchange::ClientResponseType::FILLED);
-    CHECK(Trading::BinanceUmFuturesVenueAdapter::mapOrderStatus("EXPIRED") ==
-          Exchange::ClientResponseType::CANCELED);
-    CHECK(Trading::BinanceUmFuturesVenueAdapter::adjustedTimestamp(10000, -3600) == 6400);
-    CHECK(Trading::BinanceUmFuturesVenueAdapter::adjustedTimestamp(10000, 125) == 10125);
-}
+                               : checkFailure(#condition, __FILE__, __LINE__))
 
 void testAsyncLoggerFixedBufferContract() {
     const auto output_dir = std::filesystem::temp_directory_path() /
@@ -274,23 +242,6 @@ void testMessageContract() {
     CHECK(order.toString().find("CLOSE_YESTERDAY") != std::string::npos);
 }
 
-void testJevDecisionContract() {
-    Trading::JevDecisionLFQueue queue(4);
-    auto* slot = queue.getNextToWriteTo();
-    slot->evaluation_id_ = 7;
-    slot->ticker_id_ = 0;
-    slot->bias_ = Trading::JevBias::LONG;
-    slot->intent_ = Trading::JevIntent::OPEN;
-    queue.updateWriteIndex();
-
-    const auto* decision = queue.getNextToRead();
-    CHECK(decision != nullptr);
-    CHECK(decision->evaluation_id_ == 7);
-    CHECK(decision->bias_ == Trading::JevBias::LONG);
-    CHECK(decision->intent_ == Trading::JevIntent::OPEN);
-    queue.updateReadIndex();
-}
-
 void testTradeEngineDispatchOrder() {
     Exchange::ClientRequestLFQueue requests(8);
     Exchange::ClientResponseLFQueue responses(8);
@@ -439,75 +390,6 @@ void testJevWorkerAndEvaluationExpiry() {
     decisions.updateWriteIndex();
     CHECK(engine.processPending());
     CHECK(accepted == 1);
-}
-
-void testJevHttpRequestContract() {
-    Trading::JevHttpClient client(Trading::JevHttpConfig{});
-    Trading::JevEvaluationState state;
-    state.evaluation_id_ = 9;
-    state.ticker_id_ = 0;
-    state.position_.net_position_ = 0;
-    state.depth_snapshot_.last_price_ = 100;
-    state.depth_snapshot_.bids_[0] = {99, 2};
-    state.depth_snapshot_.asks_[0] = {101, 3};
-    state.working_orders_[0].order_id_ = 12;
-    state.working_orders_[0].side_ = Common::Side::BUY;
-    state.working_orders_[0].state_ = Trading::OMOrderState::LIVE;
-
-    const auto body = client.buildRequestBody(state);
-    CHECK(body.find("\"model\":\"typesafe/jev-1.13\"") != std::string::npos);
-    CHECK(body.find("\"endpoint\"") == std::string::npos);
-    CHECK(body.find("\"instructions\":\"Choose the directional bias better supported by the available information for seeking short-term profit over a 1–5 minute horizon. A directional preference does not by itself justify opening a position.\"") != std::string::npos);
-    CHECK(body.find("\"instructions\":\"Choose the next action to seek short-term profit over an intended holding horizon of 1–5 minutes, within the stated risk limits. Act on modest opportunities supported by the available information; strong evidence is not required. Consider the bid–ask spread when judging whether an opportunity is worth trading. Choose hold when no worthwhile opportunity is apparent. The holding horizon is a planning target, not a mandatory exit deadline.\"") != std::string::npos);
-    CHECK(body.find("\"evaluation_id\":9") != std::string::npos);
-    CHECK(body.find("\"working_orders\"") != std::string::npos);
-    CHECK(body.find("\"order_id\":12") != std::string::npos);
-    CHECK(body.find("\"open\":\"open a position\"") != std::string::npos);
-    CHECK(body.find("\"hold\":\"take no action\"") != std::string::npos);
-    CHECK(body.find("\"close\":\"Reduce the current position when exiting is preferable to maintaining the exposure for short-term profit, considering the bid–ask spread. Closing at a loss is allowed.\"") ==
-                  std::string::npos);
-    CHECK(body.find("\"volume\":null") != std::string::npos);
-    CHECK(body.find("\"upper_limit_price\":null") != std::string::npos);
-
-    state.position_.net_position_ = 2;
-    const auto occupied_body = client.buildRequestBody(state);
-    CHECK(occupied_body.find("\"close\":\"Reduce the current position when exiting is preferable to maintaining the exposure for short-term profit, considering the bid–ask spread. Closing at a loss is allowed.\"") !=
-                  std::string::npos);
-}
-
-void testJevHttpFlatPositionResponse() {
-    Trading::JevEvaluationState state;
-    state.evaluation_id_ = 9;
-    state.ticker_id_ = 0;
-    state.position_.net_position_ = 0;
-    const auto flat_response = R"({
-        "answers": {
-            "bias": {
-                "type": "choice", "choice": "long",
-                "probabilities": {"long": 0.9, "short": 0.1}, "confidence": 0.8
-            },
-            "intent": {
-                "type": "choice", "choice": "hold",
-                "probabilities": {"open": 0.2, "hold": 0.8}, "confidence": 0.7
-            }
-        }
-    })";
-
-    const auto flat_decision = Trading::JevHttpClient::parseDecision(flat_response, state);
-    CHECK(flat_decision.evaluation_id_ == 9);
-    CHECK(flat_decision.intent_ == Trading::JevIntent::HOLD);
-    CHECK(flat_decision.open_probability_ == 0.2);
-    CHECK(flat_decision.close_probability_ == 0.0);
-    CHECK(flat_decision.hold_probability_ == 0.8);
-
-    state.position_.net_position_ = 2;
-    bool missing_close_rejected = false;
-    try {
-        (void)Trading::JevHttpClient::parseDecision(flat_response, state);
-    } catch (const std::runtime_error&) {
-        missing_close_rejected = true;
-    }
-    CHECK(missing_close_rejected);
 }
 
 void testJevFailureAndLatestState() {
@@ -707,44 +589,6 @@ void testJevCaptureEvaluateFailurePath() {
     std::filesystem::remove_all(output_dir);
 }
 
-void testJevPreviousWordingVariantContract() {
-    Trading::JevHttpClient client(Trading::JevHttpConfig{});
-    Trading::JevEvaluationState state;
-    state.evaluation_id_ = 9;
-    state.ticker_id_ = 0;
-    state.position_.net_position_ = 0;
-    state.depth_snapshot_.last_price_ = 3500;
-    state.depth_snapshot_.bids_[0] = {3499, 2};
-    state.depth_snapshot_.asks_[0] = {3501, 2};
-    const auto flat_request = nlohmann::json::parse(client.buildRequestBody(state));
-    const auto flat_variant = Trading::Tools::buildPreviousWordingVariant(flat_request);
-    CHECK(flat_variant.at("state") == flat_request.at("state"));
-    const auto flat_diff = Trading::Tools::describeWordingDiff(flat_request, flat_variant);
-    CHECK(flat_diff.size() == 2);
-    CHECK(flat_diff[0].at("pointer") == "/questions/bias/instructions");
-    CHECK(flat_diff[0].at("to") == "long or short?");
-    CHECK(flat_diff[1].at("pointer") == "/questions/intent/instructions");
-    CHECK(flat_diff[1].at("to") == "open, close, or hold?");
-    CHECK(flat_variant.at("questions").at("intent").at("criteria") ==
-                flat_request.at("questions").at("intent").at("criteria"));
-
-    state.position_.net_position_ = 2;
-    const auto occupied_request = nlohmann::json::parse(client.buildRequestBody(state));
-    const auto occupied_variant = Trading::Tools::buildPreviousWordingVariant(occupied_request);
-    CHECK(occupied_variant.at("state") == occupied_request.at("state"));
-    const auto occupied_diff =
-            Trading::Tools::describeWordingDiff(occupied_request, occupied_variant);
-    CHECK(occupied_diff.size() == 3);
-    bool close_pointer_found = false;
-    for (const auto& entry : occupied_diff) {
-        if (entry.at("pointer") == "/questions/intent/criteria/close") {
-            close_pointer_found = true;
-            CHECK(entry.at("to") == "reduce the current position");
-        }
-    }
-    CHECK(close_pointer_found);
-}
-
 }  // namespace
 
 void testSimexReadinessAndPositionGuards() {
@@ -813,43 +657,6 @@ void testSimexReadinessAndPositionGuards() {
     engine.registerEvaluation(0, 102);
     decide(102, Trading::JevBias::SHORT);
     CHECK(requests.size() == 0);  // An opposite OPEN is not a close.
-}
-
-void testFeatureEngineContract() {
-    Trading::MarketOrderBook book(0);
-    Trading::FeatureEngine features;
-    auto update = [&](Common::Price bid, Common::Price ask, Common::Qty bq, Common::Qty aq) {
-        Exchange::DepthSnapshot depth;
-        depth.bids_[0] = {bid, bq};
-        depth.asks_[0] = {ask, aq};
-        book.onDepthSnapshot(depth);
-        features.onMarketUpdate(book);
-        return features.features();
-    };
-    CHECK(!features.features().valid_);
-    const auto first = update(100, 101, 2, 6);
-    CHECK(first.valid_);
-    CHECK(first.mid_price_ == 100.5);
-    CHECK(std::abs(first.relative_spread_bps_ - 10000.0 / 100.5) < 1e-9);
-    CHECK(first.top_of_book_total_qty_ == 8);
-    CHECK(first.top_of_book_qty_imbalance_ == -0.5);
-    CHECK(update(100, 101, 6, 2).top_of_book_qty_imbalance_ == 0.5);
-    const auto large = update(Common::Price_INVALID - 100, Common::Price_INVALID - 1,
-                              Common::Qty_INVALID - 1, Common::Qty_INVALID - 1);
-    CHECK(large.valid_);
-    CHECK(large.top_of_book_total_qty_ == 2ULL * (Common::Qty_INVALID - 1));
-    CHECK(large.relative_spread_bps_ > 0);
-    for (const auto invalid : {update(100, 100, 1, 1), update(101, 100, 1, 1),
-                               update(0, 100, 1, 1), update(-1, 100, 1, 1),
-                               update(100, Common::Price_INVALID, 1, 1),
-                               update(Common::Price_INVALID, 101, 1, 1),
-                               update(100, 101, 0, 1), update(100, 101, 1, 0),
-                               update(100, 101, Common::Qty_INVALID, 1),
-                               update(100, 101, 1, Common::Qty_INVALID)}) {
-        CHECK(!invalid.valid_);
-        CHECK(invalid.mid_price_ == 0);
-    }
-    CHECK(update(99, 101, 1, 1).valid_);
 }
 
 void testFeatureSnapshotsAndRecovery() {
@@ -1059,7 +866,6 @@ void testTttUnstampedMessagesProduceNoRecords() {
 
 int main() {
     testIncrementalFeatureUpdates();
-    testFeatureEngineContract();
     testFeatureSnapshotsAndRecovery();
     testSimexReadinessAndPositionGuards();
     testAsyncLoggerFixedBufferContract();
@@ -1071,20 +877,15 @@ int main() {
     testTttRecordsWithSyntheticTimestamps();
     testTttUnstampedMessagesProduceNoRecords();
     testMessageContract();
-    testJevDecisionContract();
     testTradeEngineDispatchOrder();
     testSimulatedVenueTradingPath();
     testQueueFacingAdapters();
     testJevWorkerAndEvaluationExpiry();
-    testJevHttpRequestContract();
-    testJevHttpFlatPositionResponse();
     testJevCaptureDisabledByDefault();
     testJevCaptureAttemptFilesContract();
     testJevCaptureEvaluateFailurePath();
-    testJevPreviousWordingVariantContract();
     testJevFailureAndLatestState();
     testJevEvaluationSchedulingAndOrderMapping();
-    testBinanceAdapterMapping();
     testYesterdayFirstPositionClose();
     return 0;
 }
