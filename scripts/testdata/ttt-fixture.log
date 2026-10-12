@@ -1,0 +1,9 @@
+1750000000000000 [INFO] [TTT] event=ttt_market_data_consumed evaluation_id=0 ticker_id=0 elapsed_ns=100
+1750000000000001 [INFO] [TTT] event=ttt_market_data_consumed evaluation_id=0 ticker_id=0 elapsed_ns=200
+1750000000000002 [INFO] [TTT] event=ttt_market_data_consumed evaluation_id=0 ticker_id=0 elapsed_ns=300
+1750000000000003 [INFO] [TTT] event=ttt_market_data_consumed evaluation_id=0 ticker_id=0 elapsed_ns=400
+1750000000000004 [INFO] [TTT] event=ttt_decision_to_order evaluation_id=1 ticker_id=0 elapsed_ns=15
+1750000000000005 [INFO] [TTT] event=ttt_decision_to_order evaluation_id=2 ticker_id=0 elapsed_ns=25
+1750000000000006 [INFO] [TTT] event=ttt_decision_to_order evaluation_id=3 ticker_id=0 elapsed_ns=35
+1750000000000007 [WARN] [TTT] event=ttt_decision_stale_drop evaluation_id=4 ticker_id=0
+1750000000000008 [INFO] [TradeEngine] event=client_response_consumed client_id=7 ticker_id=0

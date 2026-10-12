@@ -1,0 +1,4 @@
+segment	count	mean_ns	p50_ns	p90_ns	p99_ns	max_ns
+ttt_decision_stale_drop	1	-	-	-	-	-
+ttt_decision_to_order	3	25.00	25	35	35	35
+ttt_market_data_consumed	4	250.00	200	400	400	400
