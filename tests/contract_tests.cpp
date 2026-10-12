@@ -20,6 +20,7 @@
 #include "common/async_logger.h"
 #include "common/lf_queue.h"
 #include "common/mem_pool.h"
+#include "common/time_utils.h"
 #include "exchange/market_data/market_update.h"
 #include "exchange/order_server/client_request.h"
 #include "exchange/order_server/client_response.h"
@@ -1825,6 +1826,106 @@ void testIncrementalFeatureUpdates() {
     CHECK(evaluations.size() == 0);
 }
 
+void testTttRecordsWithSyntheticTimestamps() {
+    const auto output_dir = std::filesystem::temp_directory_path() /
+                                                    "jev_quant_ttt_instrumentation";
+    std::filesystem::remove_all(output_dir);
+
+    Common::AsyncLogger logger(output_dir, 64, std::chrono::milliseconds(1));
+    Exchange::ClientRequestLFQueue requests(32);
+    Exchange::ClientResponseLFQueue responses(32);
+    Exchange::MarketUpdateLFQueue market_updates(32);
+    Trading::JevDecisionLFQueue decisions(32);
+    Trading::TradeEngine engine(
+            7, Trading::RiskLimits{10, 10, 0.0}, &requests, &responses,
+            &market_updates, &decisions, &logger);
+    logger.start();
+
+    const std::uint64_t past = Common::nowSteadyNs() - 5'000'000ULL;
+
+    auto* update = market_updates.getNextToWriteTo();
+    update->type_ = Exchange::MarketUpdateType::DEPTH_SNAPSHOT;
+    update->ticker_id_ = 0;
+    update->published_ns_ = past;
+    update->depth_snapshot_.bids_[0] = {100, 2};
+    update->depth_snapshot_.asks_[0] = {101, 3};
+    market_updates.updateWriteIndex();
+
+    auto* decision = decisions.getNextToWriteTo();
+    decision->evaluation_id_ = 1;
+    decision->ticker_id_ = 0;
+    decision->bias_ = Trading::JevBias::LONG;
+    decision->intent_ = Trading::JevIntent::OPEN;
+    decision->enqueued_ns_ = past;
+    decisions.updateWriteIndex();
+    engine.registerEvaluation(0, 1);
+
+    CHECK(engine.processPending());
+
+    auto* request = requests.getNextToWriteTo();
+    CHECK(request != nullptr);
+    request->enqueued_ns_ = past;
+    requests.updateWriteIndex();
+
+    auto* response = responses.getNextToWriteTo();
+    response->type_ = Exchange::ClientResponseType::ACCEPTED;
+    response->client_id_ = 7;
+    response->ticker_id_ = 0;
+    response->client_order_id_ = request->order_id_;
+    response->published_ns_ = past;
+    responses.updateWriteIndex();
+
+    CHECK(engine.processPending());
+    logger.stop();
+
+    std::ifstream ttt_file(output_dir / "ttt-7.log");
+    const std::string ttt_text((std::istreambuf_iterator<char>(ttt_file)),
+                                                             std::istreambuf_iterator<char>());
+    CHECK(ttt_text.find("event=ttt_market_data_consumed") != std::string::npos);
+    CHECK(ttt_text.find("event=ttt_decision_consumed") != std::string::npos);
+    CHECK(ttt_text.find("event=ttt_decision_to_order") != std::string::npos);
+    CHECK(ttt_text.find("event=ttt_order_round_trip") != std::string::npos);
+    CHECK(ttt_text.find("elapsed_ns=") != std::string::npos);
+
+    std::filesystem::remove_all(output_dir);
+}
+
+void testTttUnstampedMessagesProduceNoRecords() {
+    const auto output_dir = std::filesystem::temp_directory_path() /
+                                                    "jev_quant_ttt_unstamped";
+    std::filesystem::remove_all(output_dir);
+
+    Common::AsyncLogger logger(output_dir, 64, std::chrono::milliseconds(1));
+    Exchange::ClientRequestLFQueue requests(32);
+    Exchange::ClientResponseLFQueue responses(32);
+    Exchange::MarketUpdateLFQueue market_updates(32);
+    Trading::JevDecisionLFQueue decisions(32);
+    Trading::TradeEngine engine(
+            7, Trading::RiskLimits{10, 10, 0.0}, &requests, &responses,
+            &market_updates, &decisions, &logger);
+    logger.start();
+
+    auto* decision = decisions.getNextToWriteTo();
+    decision->evaluation_id_ = 1;
+    decision->ticker_id_ = 0;
+    decision->bias_ = Trading::JevBias::LONG;
+    decision->intent_ = Trading::JevIntent::OPEN;
+    decisions.updateWriteIndex();
+    engine.registerEvaluation(0, 1);
+    CHECK(engine.processPending());
+
+    logger.stop();
+
+    // Unstamped messages must never produce latency records (drop records
+    // carry no elapsed_ns and are the only ttt_ lines expected here).
+    std::ifstream ttt_file(output_dir / "ttt-7.log");
+    const std::string ttt_text((std::istreambuf_iterator<char>(ttt_file)),
+                                                             std::istreambuf_iterator<char>());
+    CHECK(ttt_text.find("elapsed_ns=") == std::string::npos);
+
+    std::filesystem::remove_all(output_dir);
+}
+
 int main() {
     testIncrementalFeatureUpdates();
     testFeatureEngineContract();
@@ -1840,6 +1941,8 @@ int main() {
     testAsyncLoggerLateRegistrationAndStartupVisibility();
     testAsyncLoggerWorkerBinding();
     testQueueSpscConcurrency();
+    testTttRecordsWithSyntheticTimestamps();
+    testTttUnstampedMessagesProduceNoRecords();
     testMessageContract();
     testMarketOrderBookContract();
     testIncrementalBookOrderFlows();
