@@ -3,13 +3,12 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <deque>
 #include <functional>
 #include <memory>
-#include <map>
 #include <mutex>
 #include <thread>
 #include <nlohmann/json.hpp>
+#include "trading/venue/binance_depth_book.h"
 #include "trading/venue/binance_websocket_stream.h"
 #include <string>
 #include <unordered_map>
@@ -93,12 +92,8 @@ class BinanceUmFuturesVenueAdapter final : public VenueAdapter {
     std::atomic<bool> keepalive_running_{false};
     std::jthread keepalive_thread_;
     nlohmann::json account_state_;
-    std::map<double, double> bids_;
-    std::map<double, double> asks_;
+    BinanceDepthBook depth_book_;
     std::mutex book_mutex_;
-    std::uint64_t last_depth_update_id_ = 0;
-    bool depth_snapshot_ready_ = false;
-    std::deque<nlohmann::json> pending_depth_events_;
     std::unordered_map<Common::OrderId, Exchange::ClientRequest> live_orders_;
     std::unordered_map<Common::OrderId, Common::Qty> cumulative_exec_qty_;
     std::optional<Common::AsyncLogger::ProducerHandle> log_handle_;

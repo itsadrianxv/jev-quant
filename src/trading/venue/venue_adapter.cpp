@@ -185,63 +185,6 @@ auto fetchDepth(const std::string& symbol) -> nlohmann::json {
     }
     throw std::logic_error("Binance depth attempts exhausted");
 }
-auto publishBook(const std::map<double, double>& bids,
-                  const std::map<double, double>& asks,
-                  Common::TickerId ticker_id, MarketDataConsumer* consumer) -> void {
-    Exchange::MarketUpdate update;
-    update.type_ = Exchange::MarketUpdateType::DEPTH_SNAPSHOT;
-    update.ticker_id_ = ticker_id;
-    std::size_t index = 0;
-    for (auto it = bids.rbegin(); it != bids.rend() &&
-         index < Common::DEPTH_SNAPSHOT_LEVELS; ++it, ++index) {
-        update.depth_snapshot_.bids_[index].price_ =
-                static_cast<Common::Price>(it->first * 100000000.0);
-        update.depth_snapshot_.bids_[index].qty_ =
-                static_cast<Common::Qty>(it->second);
-    }
-    index = 0;
-    for (auto it = asks.begin(); it != asks.end() &&
-         index < Common::DEPTH_SNAPSHOT_LEVELS; ++it, ++index) {
-        update.depth_snapshot_.asks_[index].price_ =
-                static_cast<Common::Price>(it->first * 100000000.0);
-        update.depth_snapshot_.asks_[index].qty_ =
-                static_cast<Common::Qty>(it->second);
-    }
-    consumer->publishMarketUpdate(update);
-}
-auto applyDepthEvent(const nlohmann::json& message,
-                     std::map<double, double>& bids,
-                     std::map<double, double>& asks,
-                     std::uint64_t& last_update_id) -> void {
-    if (!message.contains("U") || !message.contains("u") ||
-        !message.contains("pu") || !message.contains("b") ||
-        !message.contains("a")) {
-        throw std::runtime_error("Invalid Binance depth event");
-    }
-    const auto first = message.at("U").get<std::uint64_t>();
-    const auto final = message.at("u").get<std::uint64_t>();
-    const auto previous = message.at("pu").get<std::uint64_t>();
-    if (final <= last_update_id) return;
-    if (last_update_id != 0 && previous != last_update_id &&
-        !(first <= last_update_id + 1 && final >= last_update_id + 1)) {
-        throw std::runtime_error(
-                "Binance depth sequence gap: U=" + std::to_string(first) +
-                " u=" + std::to_string(final) +
-                " pu=" + std::to_string(previous) +
-                " last=" + std::to_string(last_update_id));
-    }
-    for (const auto& level : message.at("b")) {
-        const auto price = std::stod(level[0].get<std::string>());
-        const auto quantity = std::stod(level[1].get<std::string>());
-        if (quantity == 0.0) bids.erase(price); else bids[price] = quantity;
-    }
-    for (const auto& level : message.at("a")) {
-        const auto price = std::stod(level[0].get<std::string>());
-        const auto quantity = std::stod(level[1].get<std::string>());
-        if (quantity == 0.0) asks.erase(price); else asks[price] = quantity;
-    }
-    last_update_id = final;
-}
 auto validateExchangeInfo(const std::string& symbol) -> void {
     curl_global_init(CURL_GLOBAL_DEFAULT);
     auto* curl = curl_easy_init();
@@ -418,12 +361,11 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
             "/ws/" + lowerSymbol(config_.symbol) + "@depth@100ms",
             [this](const nlohmann::json& message) {
                 std::scoped_lock lock(book_mutex_);
-                if (!depth_snapshot_ready_) {
-                    pending_depth_events_.push_back(message);
-                    return;
+                depth_book_.onDepthEvent(message);
+                if (depth_book_.snapshotReady()) {
+                    market_data_->publishMarketUpdate(
+                            depth_book_.buildMarketUpdate(config_.ticker_id));
                 }
-                applyDepthEvent(message, bids_, asks_, last_depth_update_id_);
-                publishBook(bids_, asks_, config_.ticker_id, market_data_);
             },
             [this](const std::string& error) {
                 running_.store(false, std::memory_order_release);
@@ -439,23 +381,9 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
     const auto depth = fetchDepth(config_.symbol);
     {
         std::scoped_lock lock(book_mutex_);
-        bids_.clear();
-        asks_.clear();
-        for (const auto& level : depth.at("bids")) {
-            bids_[std::stod(level[0].get<std::string>())] =
-                    std::stod(level[1].get<std::string>());
-        }
-        for (const auto& level : depth.at("asks")) {
-            asks_[std::stod(level[0].get<std::string>())] =
-                    std::stod(level[1].get<std::string>());
-        }
-        last_depth_update_id_ = depth.at("lastUpdateId").get<std::uint64_t>();
-        for (const auto& event : pending_depth_events_) {
-            applyDepthEvent(event, bids_, asks_, last_depth_update_id_);
-        }
-        pending_depth_events_.clear();
-        depth_snapshot_ready_ = true;
-        publishBook(bids_, asks_, config_.ticker_id, market_data_);
+        depth_book_.installSnapshot(depth);
+        market_data_->publishMarketUpdate(
+                depth_book_.buildMarketUpdate(config_.ticker_id));
     }
     reportStartupStage("listen_key");
     listen_key_ = createListenKey(config_);
