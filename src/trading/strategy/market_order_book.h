@@ -267,7 +267,10 @@ class MarketOrderBook final {
                     break;
                 }
                 const auto home = indexOf(entries_[probe].key_);
-                if (((home - hole) & kMask) < ((probe - hole) & kMask)) {
+                // Move the entry into the hole when its home is not
+                // cyclically inside (hole, probe]: otherwise its probe chain
+                // would run through the hole and the key would be lost.
+                if (((home - hole - 1) & kMask) >= ((probe - hole) & kMask)) {
                     entries_[hole] = entries_[probe];
                     entries_[probe] = Entry{};
                     hole = probe;
