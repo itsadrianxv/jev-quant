@@ -217,7 +217,9 @@ tests/unit/lf_queue_test.cpp
                 tests/unit/jev_variant_test.cpp
                 tests/unit/binance_um_futures_adapter_test.cpp)
 jev_add_gtest_test(component_tests LABEL component
-        SOURCES tests/component/component_tests.cpp)
+        SOURCES tests/component/component_tests.cpp
+                tests/component/decision_matrix_test.cpp
+                tests/component/order_state_machine_test.cpp)
 jev_add_gtest_test(integration_tests LABEL integration
         SOURCES tests/integration/integration_tests.cpp)
 # The integration suite locates the local mock decision server by absolute
