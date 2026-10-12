@@ -23,6 +23,16 @@
         "CMAKE_BUILD_TYPE": "Release",
         "JEV_ENABLE_SIMEX": "OFF"
       }
+    },
+    {
+      "name": "local-gcc-release-profile",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/Release-profile",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_FLAGS": "-g -fno-omit-frame-pointer",
+        "JEV_ENABLE_SIMEX": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -33,6 +43,10 @@
     {
       "name": "ci-gcc-release",
       "configurePreset": "ci-gcc-release"
+    },
+    {
+      "name": "local-gcc-release-profile",
+      "configurePreset": "local-gcc-release-profile"
     }
   ],
   "testPresets": [
