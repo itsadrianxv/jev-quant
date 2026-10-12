@@ -222,6 +222,10 @@ jev_add_gtest_test(component_tests LABEL component
         SOURCES tests/component/component_tests.cpp)
 jev_add_gtest_test(integration_tests LABEL integration
         SOURCES tests/integration/integration_tests.cpp)
+# The integration suite locates the local mock decision server by absolute
+# source path because ctest invokes each case from the build directory.
+target_compile_definitions(integration_tests PRIVATE
+        JEV_TEST_MOCK_SERVER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/tests/mock_jev_server.py")
 
 add_executable(jev_replay src/tools/jev_replay.cpp)
 target_link_libraries(jev_replay PRIVATE jev_trading_core)
