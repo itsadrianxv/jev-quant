@@ -196,10 +196,8 @@ if(Python3_FOUND)
 endif()
 
 if(JEV_ENABLE_SIMNOW)
-    add_executable(simnow_tests tests/simnow_tests.cpp)
-    target_link_libraries(simnow_tests PRIVATE jev_trading_core)
-    target_compile_options(simnow_tests PRIVATE -Wall -Wextra -Wpedantic)
-    add_test(NAME simnow_tests COMMAND simnow_tests)
+    jev_add_gtest_test(simnow_adapter_tests LABEL integration
+            SOURCES tests/integration/simnow_adapter_test.cpp)
     add_executable(simnow_live_smoke tests/simnow_live_smoke.cpp)
     target_link_libraries(simnow_live_smoke PRIVATE jev_trading_core)
 endif()
