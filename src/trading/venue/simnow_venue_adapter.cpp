@@ -1,4 +1,5 @@
 #include "simnow_venue_adapter.h"
+#include "common/lf_queue.h"
 #include <algorithm>
 #include <cmath>
 #include <condition_variable>
@@ -105,7 +106,14 @@ struct SimNowVenueAdapter::Impl {
     std::unique_ptr<Ctp::Transport> transport;
     mutable std::mutex mutex;
     std::condition_variable changed;
-    std::deque<Ctp::Event> events;
+    // One pre-allocated bounded SPSC queue per CTP producer thread. The trader
+    // API and the market API each deliver every callback from their own single
+    // internal thread, so each queue has exactly one producer and the gateway
+    // poll thread is the only consumer. Storage is allocated once here; a full
+    // queue keeps the overflow-flag semantics instead of allocating or
+    // terminating.
+    Common::LFQueue<Ctp::Event> trader_events;
+    Common::LFQueue<Ctp::Event> market_events;
     std::string error;
     std::atomic<bool> active{false}, fatal{false}, stopping{false}, overflow{false};
     std::atomic<int> net_position{0};
@@ -134,7 +142,8 @@ struct SimNowVenueAdapter::Impl {
     std::map<std::string,Order> orders;
 
     Impl(MarketDataConsumer* m,OrderGateway* g,SimNowConfig c,StateSink s,std::unique_ptr<Ctp::Transport> t)
-        : market(m),gateway(g),config(std::move(c)),state_sink(std::move(s)),transport(std::move(t)) {
+        : market(m),gateway(g),config(std::move(c)),state_sink(std::move(s)),transport(std::move(t)),
+          trader_events(config.capacity),market_events(config.capacity) {
         if(!market || !gateway || !transport || !state_sink || config.instrument.empty() ||
            config.user.empty() || config.password.empty() || config.auth_code.empty() ||
            config.ticker_id>=Common::ME_MAX_TICKERS || config.capacity==0 ||
@@ -155,12 +164,13 @@ struct SimNowVenueAdapter::Impl {
         fatal=true; active=false; state(false); changed.notify_all();
         std::osyncstream(std::cerr)<<"event=simnow_failure reason="<<reason<<'\n';
     }
-    void enqueue(Ctp::Event event) noexcept {
-        try {
-            std::scoped_lock lock(mutex);
-            if(events.size()>=config.capacity) { overflow=true; return; }
-            events.push_back(std::move(event));
-        } catch(...) { overflow=true; }
+    void enqueue(Common::LFQueue<Ctp::Event>& queue,Ctp::Event event) noexcept {
+        if(auto* slot=queue.tryGetNextToWriteTo()) {
+            *slot=std::move(event);
+            queue.updateWriteIndex();
+            return;
+        }
+        overflow=true;
     }
     void request(Kind kind) {
         const auto id=++next_id;
@@ -390,10 +400,11 @@ struct SimNowVenueAdapter::Impl {
         try {
             if(!market_started) { market->start(); market_started=true; }
             if(overflow.exchange(false)) fail("CTP callback queue exhausted; execution status may be unknown");
-            std::deque<Ctp::Event> batch;
-            { std::scoped_lock lock(mutex); batch.swap(events); }
-            for(const auto& e:batch) {
-                try { event(e); } catch(const std::exception& ex) { fail(ex.what()); }
+            for(auto* queue:{&trader_events,&market_events}) {
+                while(const auto* pending=queue->getNextToRead()) {
+                    try { event(*pending); } catch(const std::exception& ex) { fail(ex.what()); }
+                    queue->updateReadIndex();
+                }
             }
             const auto now=Clock::now();
             if(stopping) {
@@ -436,7 +447,9 @@ void SimNowVenueAdapter::start() {
     i.gateway->setRequestHandler([&i](std::size_t,const auto& r){try {i.submit(r);} catch(const std::exception& e){i.fail(e.what());}});
     i.gateway->setPollHandler([&i]{i.poll();});
     try {
-        i.transport->start(i.config,[&i](auto e){i.enqueue(std::move(e));});
+        i.transport->start(i.config,
+            [&i](auto e){i.enqueue(i.trader_events,std::move(e));},
+            [&i](auto e){i.enqueue(i.market_events,std::move(e));});
         i.gateway->start();
         std::unique_lock lock(i.mutex);
         const auto ok=i.changed.wait_for(lock,i.config.startup_timeout,[&]{return i.active.load() || i.fatal.load();});

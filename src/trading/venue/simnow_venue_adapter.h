@@ -37,12 +37,16 @@ struct Event {
     Payload payload;
 };
 
-// Internal SDK seam: fake transports drive the same event queue in offline tests.
+// Internal SDK seam: fake transports drive the same event queues in offline tests.
 class Transport {
   public:
     using Sink = std::function<void(Event)>;
     virtual ~Transport() = default;
-    virtual void start(const SimNowConfig&, Sink) = 0;
+    // One sink per CTP producer thread: the trader API and the market API each
+    // deliver every callback from their own single internal thread. The
+    // adapter backs each sink with its own SPSC queue, so a sink must never be
+    // invoked from more than one thread and no event may cross sinks.
+    virtual void start(const SimNowConfig&, Sink trader, Sink market) = 0;
     virtual void stop() noexcept = 0;
     virtual int request(Kind, int) = 0;
     virtual int insert(const CThostFtdcInputOrderField&, int) = 0;

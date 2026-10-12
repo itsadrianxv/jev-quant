@@ -15,53 +15,53 @@ class Native final : public Transport {
     struct Trader final : CThostFtdcTraderSpi {
         Native& owner;
         explicit Trader(Native& n) : owner(n) {}
-        void OnFrontConnected() override { owner.emit(Kind::TraderConnected); }
-        void OnFrontDisconnected(int e) override { owner.emit(Kind::Disconnected, nullptr, 0, true, e); }
-        void OnRspAuthenticate(CThostFtdcRspAuthenticateField*, CThostFtdcRspInfoField* e, int id, bool last) override { owner.emit(Kind::Auth,e,id,last); }
-        void OnRspUserLogin(CThostFtdcRspUserLoginField* p, CThostFtdcRspInfoField* e, int id, bool last) override { owner.data(Kind::Login,p,e,id,last); }
-        void OnRspSettlementInfoConfirm(CThostFtdcSettlementInfoConfirmField*, CThostFtdcRspInfoField* e, int id, bool last) override { owner.emit(Kind::Settlement,e,id,last); }
-        void OnRspQryInstrument(CThostFtdcInstrumentField* p, CThostFtdcRspInfoField* e, int id, bool last) override { owner.data(Kind::Instrument,p,e,id,last); }
-        void OnRspQryTradingAccount(CThostFtdcTradingAccountField* p, CThostFtdcRspInfoField* e, int id, bool last) override { owner.data(Kind::Account,p,e,id,last); }
-        void OnRspQryInvestorPosition(CThostFtdcInvestorPositionField* p, CThostFtdcRspInfoField* e, int id, bool last) override { owner.data(Kind::Position,p,e,id,last); }
-        void OnRspQryOrder(CThostFtdcOrderField* p, CThostFtdcRspInfoField* e, int id, bool last) override { owner.data(Kind::OrderQuery,p,e,id,last); }
-        void OnRtnOrder(CThostFtdcOrderField* p) override { owner.data(Kind::Order,p); }
-        void OnRtnTrade(CThostFtdcTradeField* p) override { owner.data(Kind::Trade,p); }
-        void OnRspOrderInsert(CThostFtdcInputOrderField* p, CThostFtdcRspInfoField* e, int id, bool last) override { owner.data(Kind::InsertError,p,e,id,last); }
-        void OnErrRtnOrderInsert(CThostFtdcInputOrderField* p, CThostFtdcRspInfoField* e) override { owner.data(Kind::InsertError,p,e); }
-        void OnRspOrderAction(CThostFtdcInputOrderActionField* p, CThostFtdcRspInfoField* e, int id, bool last) override { owner.data(Kind::CancelError,p,e,id,last); }
+        void OnFrontConnected() override { owner.emit(owner.trader_sink_,Kind::TraderConnected); }
+        void OnFrontDisconnected(int e) override { owner.emit(owner.trader_sink_,Kind::Disconnected, nullptr, 0, true, e); }
+        void OnRspAuthenticate(CThostFtdcRspAuthenticateField*, CThostFtdcRspInfoField* e, int id, bool last) override { owner.emit(owner.trader_sink_,Kind::Auth,e,id,last); }
+        void OnRspUserLogin(CThostFtdcRspUserLoginField* p, CThostFtdcRspInfoField* e, int id, bool last) override { owner.data(owner.trader_sink_,Kind::Login,p,e,id,last); }
+        void OnRspSettlementInfoConfirm(CThostFtdcSettlementInfoConfirmField*, CThostFtdcRspInfoField* e, int id, bool last) override { owner.emit(owner.trader_sink_,Kind::Settlement,e,id,last); }
+        void OnRspQryInstrument(CThostFtdcInstrumentField* p, CThostFtdcRspInfoField* e, int id, bool last) override { owner.data(owner.trader_sink_,Kind::Instrument,p,e,id,last); }
+        void OnRspQryTradingAccount(CThostFtdcTradingAccountField* p, CThostFtdcRspInfoField* e, int id, bool last) override { owner.data(owner.trader_sink_,Kind::Account,p,e,id,last); }
+        void OnRspQryInvestorPosition(CThostFtdcInvestorPositionField* p, CThostFtdcRspInfoField* e, int id, bool last) override { owner.data(owner.trader_sink_,Kind::Position,p,e,id,last); }
+        void OnRspQryOrder(CThostFtdcOrderField* p, CThostFtdcRspInfoField* e, int id, bool last) override { owner.data(owner.trader_sink_,Kind::OrderQuery,p,e,id,last); }
+        void OnRtnOrder(CThostFtdcOrderField* p) override { owner.data(owner.trader_sink_,Kind::Order,p); }
+        void OnRtnTrade(CThostFtdcTradeField* p) override { owner.data(owner.trader_sink_,Kind::Trade,p); }
+        void OnRspOrderInsert(CThostFtdcInputOrderField* p, CThostFtdcRspInfoField* e, int id, bool last) override { owner.data(owner.trader_sink_,Kind::InsertError,p,e,id,last); }
+        void OnErrRtnOrderInsert(CThostFtdcInputOrderField* p, CThostFtdcRspInfoField* e) override { owner.data(owner.trader_sink_,Kind::InsertError,p,e); }
+        void OnRspOrderAction(CThostFtdcInputOrderActionField* p, CThostFtdcRspInfoField* e, int id, bool last) override { owner.data(owner.trader_sink_,Kind::CancelError,p,e,id,last); }
         void OnErrRtnOrderAction(CThostFtdcOrderActionField* p, CThostFtdcRspInfoField* e) override {
             CThostFtdcInputOrderActionField out{};
             if (p) { put(out.OrderRef,p->OrderRef); out.FrontID=p->FrontID; out.SessionID=p->SessionID; }
-            owner.data(Kind::CancelError,&out,e);
+            owner.data(owner.trader_sink_,Kind::CancelError,&out,e);
         }
-        void OnRspError(CThostFtdcRspInfoField* e,int id,bool last) override { owner.emit(Kind::Error,e,id,last); }
+        void OnRspError(CThostFtdcRspInfoField* e,int id,bool last) override { owner.emit(owner.trader_sink_,Kind::Error,e,id,last); }
     } trader_spi_{*this};
     struct Market final : CThostFtdcMdSpi {
         Native& owner;
         explicit Market(Native& n) : owner(n) {}
-        void OnFrontConnected() override { owner.emit(Kind::MarketConnected); }
-        void OnFrontDisconnected(int e) override { owner.emit(Kind::Disconnected,nullptr,0,true,e); }
-        void OnRspUserLogin(CThostFtdcRspUserLoginField* p,CThostFtdcRspInfoField* e,int id,bool last) override { owner.data(Kind::MarketLogin,p,e,id,last); }
-        void OnRspSubMarketData(CThostFtdcSpecificInstrumentField*,CThostFtdcRspInfoField* e,int id,bool last) override { owner.emit(Kind::Subscription,e,id,last); }
-        void OnRtnDepthMarketData(CThostFtdcDepthMarketDataField* p) override { owner.data(Kind::Depth,p); }
-        void OnRspError(CThostFtdcRspInfoField* e,int id,bool last) override { owner.emit(Kind::Error,e,id,last); }
+        void OnFrontConnected() override { owner.emit(owner.market_sink_,Kind::MarketConnected); }
+        void OnFrontDisconnected(int e) override { owner.emit(owner.market_sink_,Kind::Disconnected,nullptr,0,true,e); }
+        void OnRspUserLogin(CThostFtdcRspUserLoginField* p,CThostFtdcRspInfoField* e,int id,bool last) override { owner.data(owner.market_sink_,Kind::MarketLogin,p,e,id,last); }
+        void OnRspSubMarketData(CThostFtdcSpecificInstrumentField*,CThostFtdcRspInfoField* e,int id,bool last) override { owner.emit(owner.market_sink_,Kind::Subscription,e,id,last); }
+        void OnRtnDepthMarketData(CThostFtdcDepthMarketDataField* p) override { owner.data(owner.market_sink_,Kind::Depth,p); }
+        void OnRspError(CThostFtdcRspInfoField* e,int id,bool last) override { owner.emit(owner.market_sink_,Kind::Error,e,id,last); }
     } market_spi_{*this};
     CThostFtdcTraderApi* trader_ = nullptr;
     CThostFtdcMdApi* market_ = nullptr;
     SimNowConfig config_;
-    Sink sink_;
-    void emit(Kind kind,CThostFtdcRspInfoField* e=nullptr,int id=0,bool last=true,int error=0) {
-        sink_({kind,id,e ? e->ErrorID : error,last,{}});
+    Sink trader_sink_, market_sink_;
+    void emit(Sink& sink,Kind kind,CThostFtdcRspInfoField* e=nullptr,int id=0,bool last=true,int error=0) {
+        sink({kind,id,e ? e->ErrorID : error,last,{}});
     }
-    template<class T> void data(Kind kind,T* p,CThostFtdcRspInfoField* e=nullptr,int id=0,bool last=true) {
+    template<class T> void data(Sink& sink,Kind kind,T* p,CThostFtdcRspInfoField* e=nullptr,int id=0,bool last=true) {
         Event event{kind,id,e ? e->ErrorID : 0,last,{}};
         if(p) event.payload=*p;
-        sink_(std::move(event));
+        sink(std::move(event));
     }
   public:
     ~Native() override { stop(); }
-    void start(const SimNowConfig& c,Sink sink) override {
-        config_=c; sink_=std::move(sink);
+    void start(const SimNowConfig& c,Sink trader,Sink market) override {
+        config_=c; trader_sink_=std::move(trader); market_sink_=std::move(market);
         const auto td=c.flow_directory+"/trader/", md=c.flow_directory+"/market/";
         std::filesystem::create_directories(td); std::filesystem::create_directories(md);
         trader_=CThostFtdcTraderApi::CreateFtdcTraderApi(td.c_str());

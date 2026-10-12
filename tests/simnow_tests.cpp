@@ -71,20 +71,33 @@ template<std::size_t N> void text(char (&dest)[N],const char* src) {
 }
 
 struct Fake final : Ctp::Transport {
-    Sink sink;
+    Sink trader, market;
     std::mutex mutex;
     std::vector<CThostFtdcInputOrderField> sent;
     std::vector<CThostFtdcInputOrderActionField> canceled;
     std::atomic<int> query_count{0};
     bool dirty=false, working=false, reject_insert=false, cancel_fill=false, no_cancel=false;
-    bool no_instrument=false, query_throttle=false;
+    bool no_instrument=false, query_throttle=false, flood=false;
     int market_login_id=-1;
     std::atomic<int> subscriptions{0};
-    void start(const SimNowConfig&,Sink s) override {
-        sink=std::move(s); emit(Kind::TraderConnected); emit(Kind::MarketConnected);
+    static bool marketSide(Kind k) {
+        return k==Kind::MarketConnected || k==Kind::MarketLogin || k==Kind::Subscription || k==Kind::Depth;
+    }
+    void start(const SimNowConfig&,Sink t,Sink m) override {
+        trader=std::move(t); market=std::move(m);
+        if(flood) {
+            // Exhaust the bounded SPSC queue while no consumer is running yet:
+            // every event beyond capacity must raise the overflow flag.
+            Ctp::Event event; event.kind=Kind::Order;
+            for(int i=0;i<4098;++i) trader(event);
+            return;
+        }
+        emit(Kind::TraderConnected); emit(Kind::MarketConnected);
     }
     void stop() noexcept override {}
-    void emit(Kind k,Ctp::Payload p={},int id=0,int error=0,bool last=true) {sink({k,id,error,last,std::move(p)});}
+    void emit(Kind k,Ctp::Payload p={},int id=0,int error=0,bool last=true) {
+        (marketSide(k)?market:trader)({k,id,error,last,std::move(p)});
+    }
     CThostFtdcDepthMarketDataField depth() {
         CThostFtdcDepthMarketDataField p{}; text(p.InstrumentID,"au2612"); text(p.TradingDay,"20260928");
         p.BidPrice1=800; p.AskPrice1=800.02; p.BidVolume1=10; p.AskVolume1=10;
@@ -239,6 +252,16 @@ void shutdownAndFailures() {
     until([&]{return day.adapter->failed();}); day.adapter->stop();
 }
 
+void overflowReporting() {
+    Fixture f([](Fake& x){x.flood=true;});
+    bool threw=false;
+    try {f.adapter->start();} catch(const std::runtime_error& error) {
+        threw=true;
+        CHECK(std::string(error.what()).find("queue exhausted")!=std::string::npos);
+    }
+    CHECK(threw); CHECK(f.adapter->failed()); CHECK(!f.ready);
+}
+
 void rejectionChecks() {
     Fixture local([](Fake& x){x.reject_insert=true;}); local.adapter->start(); local.send();
     CHECK(local.response().type_==Exchange::ClientResponseType::REJECTED);
@@ -300,7 +323,7 @@ void engineContract() {
 }
 
 int main() {
-    try { credentialChecks(); startupChecks(); tradingAndDuplicates(); shutdownAndFailures(); rejectionChecks(); engineContract();
+    try { credentialChecks(); startupChecks(); tradingAndDuplicates(); shutdownAndFailures(); overflowReporting(); rejectionChecks(); engineContract();
         CHECK(Ctp::price(std::numeric_limits<double>::max())==Common::Price_INVALID);
         CHECK(Ctp::price(NAN)==Common::Price_INVALID);
     } catch(const std::exception& e) {std::cerr<<e.what()<<'\n'; return 1;}
