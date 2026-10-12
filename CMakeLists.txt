@@ -143,6 +143,29 @@ target_compile_definitions(jev_trading_core PRIVATE JEV_SOURCE_REVISION="${JEV_S
 
 enable_testing()
 
+# GoogleTest backs the layered test tree (unit, component, integration). The
+# release is pinned so builds stay reproducible without a system googletest
+# package.
+include(FetchContent)
+set(JEV_GTEST_VERSION "v1.15.2" CACHE STRING "Pinned GoogleTest release for the layered test tree")
+FetchContent_Declare(googletest
+        URL https://github.com/google/googletest/archive/refs/tags/${JEV_GTEST_VERSION}.tar.gz)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+include(GoogleTest)
+
+# Registers a GoogleTest binary whose cases become individual CTest entries,
+# each tagged with the given layer label (unit, component, or integration).
+function(jev_add_gtest_test name)
+    cmake_parse_arguments(ARG "" "LABEL" "SOURCES" ${ARGN})
+    add_executable(${name} ${ARG_SOURCES})
+    target_link_libraries(${name} PRIVATE jev_trading_core GTest::gtest_main)
+    target_compile_options(${name} PRIVATE -Wall -Wextra -Wpedantic)
+    gtest_discover_tests(${name} PROPERTIES LABELS ${ARG_LABEL}
+            DISCOVERY_TIMEOUT 120)
+endfunction()
+
 add_executable(contract_tests tests/contract_tests.cpp)
 target_link_libraries(contract_tests PRIVATE jev_trading_core)
 target_compile_options(contract_tests PRIVATE -Wall -Wextra -Wpedantic)
@@ -157,6 +180,14 @@ if(JEV_ENABLE_SIMNOW)
     add_executable(simnow_live_smoke tests/simnow_live_smoke.cpp)
     target_link_libraries(simnow_live_smoke PRIVATE jev_trading_core)
 endif()
+
+jev_add_gtest_test(unit_tests LABEL unit
+        SOURCES tests/unit/position_keeper_test.cpp
+                tests/unit/risk_manager_test.cpp)
+jev_add_gtest_test(component_tests LABEL component
+        SOURCES tests/component/component_tests.cpp)
+jev_add_gtest_test(integration_tests LABEL integration
+        SOURCES tests/integration/integration_tests.cpp)
 
 add_executable(jev_replay src/tools/jev_replay.cpp)
 target_link_libraries(jev_replay PRIVATE jev_trading_core)
