@@ -1,0 +1,1030 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" width="1200" height="278" onload="init(evt)" viewBox="0 0 1200 278" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<!-- Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples. -->
+<!-- NOTES:  -->
+<defs>
+	<linearGradient id="background" y1="0" y2="1" x1="0" x2="0" >
+		<stop stop-color="#eeeeee" offset="5%" />
+		<stop stop-color="#eeeeb0" offset="95%" />
+	</linearGradient>
+</defs>
+<style type="text/css">
+	text { font-family:Verdana; font-size:12px; fill:rgb(0,0,0); }
+	#search, #ignorecase { opacity:0.1; cursor:pointer; }
+	#search:hover, #search.show, #ignorecase:hover, #ignorecase.show { opacity:1; }
+	#subtitle { text-anchor:middle; font-color:rgb(160,160,160); }
+	#title { text-anchor:middle; font-size:17px}
+	#unzoom { cursor:pointer; }
+	#frames > *:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+	.hide { display:none; }
+	.parent { opacity:0.5; }
+</style>
+<script type="text/ecmascript">
+<![CDATA[
+	"use strict";
+	var details, searchbtn, unzoombtn, matchedtxt, svg, searching, currentSearchTerm, ignorecase, ignorecaseBtn;
+	function init(evt) {
+		details = document.getElementById("details").firstChild;
+		searchbtn = document.getElementById("search");
+		ignorecaseBtn = document.getElementById("ignorecase");
+		unzoombtn = document.getElementById("unzoom");
+		matchedtxt = document.getElementById("matched");
+		svg = document.getElementsByTagName("svg")[0];
+		searching = 0;
+		currentSearchTerm = null;
+
+		// use GET parameters to restore a flamegraphs state.
+		var params = get_params();
+		if (params.x && params.y)
+			zoom(find_group(document.querySelector('[x="' + params.x + '"][y="' + params.y + '"]')));
+                if (params.s) search(params.s);
+	}
+
+	// event listeners
+	window.addEventListener("click", function(e) {
+		var target = find_group(e.target);
+		if (target) {
+			if (target.nodeName == "a") {
+				if (e.ctrlKey === false) return;
+				e.preventDefault();
+			}
+			if (target.classList.contains("parent")) unzoom(true);
+			zoom(target);
+			if (!document.querySelector('.parent')) {
+				// we have basically done a clearzoom so clear the url
+				var params = get_params();
+				if (params.x) delete params.x;
+				if (params.y) delete params.y;
+				history.replaceState(null, null, parse_params(params));
+				unzoombtn.classList.add("hide");
+				return;
+			}
+
+			// set parameters for zoom state
+			var el = target.querySelector("rect");
+			if (el && el.attributes && el.attributes.y && el.attributes._orig_x) {
+				var params = get_params()
+				params.x = el.attributes._orig_x.value;
+				params.y = el.attributes.y.value;
+				history.replaceState(null, null, parse_params(params));
+			}
+		}
+		else if (e.target.id == "unzoom") clearzoom();
+		else if (e.target.id == "search") search_prompt();
+		else if (e.target.id == "ignorecase") toggle_ignorecase();
+	}, false)
+
+	// mouse-over for info
+	// show
+	window.addEventListener("mouseover", function(e) {
+		var target = find_group(e.target);
+		if (target) details.nodeValue = "Function: " + g_to_text(target);
+	}, false)
+
+	// clear
+	window.addEventListener("mouseout", function(e) {
+		var target = find_group(e.target);
+		if (target) details.nodeValue = ' ';
+	}, false)
+
+	// ctrl-F for search
+	// ctrl-I to toggle case-sensitive search
+	window.addEventListener("keydown",function (e) {
+		if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+			e.preventDefault();
+			search_prompt();
+		}
+		else if (e.ctrlKey && e.keyCode === 73) {
+			e.preventDefault();
+			toggle_ignorecase();
+		}
+	}, false)
+
+	// functions
+	function get_params() {
+		var params = {};
+		var paramsarr = window.location.search.substr(1).split('&');
+		for (var i = 0; i < paramsarr.length; ++i) {
+			var tmp = paramsarr[i].split("=");
+			if (!tmp[0] || !tmp[1]) continue;
+			params[tmp[0]]  = decodeURIComponent(tmp[1]);
+		}
+		return params;
+	}
+	function parse_params(params) {
+		var uri = "?";
+		for (var key in params) {
+			uri += key + '=' + encodeURIComponent(params[key]) + '&';
+		}
+		if (uri.slice(-1) == "&")
+			uri = uri.substring(0, uri.length - 1);
+		if (uri == '?')
+			uri = window.location.href.split('?')[0];
+		return uri;
+	}
+	function find_child(node, selector) {
+		var children = node.querySelectorAll(selector);
+		if (children.length) return children[0];
+	}
+	function find_group(node) {
+		var parent = node.parentElement;
+		if (!parent) return;
+		if (parent.id == "frames") return node;
+		return find_group(parent);
+	}
+	function orig_save(e, attr, val) {
+		if (e.attributes["_orig_" + attr] != undefined) return;
+		if (e.attributes[attr] == undefined) return;
+		if (val == undefined) val = e.attributes[attr].value;
+		e.setAttribute("_orig_" + attr, val);
+	}
+	function orig_load(e, attr) {
+		if (e.attributes["_orig_"+attr] == undefined) return;
+		e.attributes[attr].value = e.attributes["_orig_" + attr].value;
+		e.removeAttribute("_orig_"+attr);
+	}
+	function g_to_text(e) {
+		var text = find_child(e, "title").firstChild.nodeValue;
+		return (text)
+	}
+	function g_to_func(e) {
+		var func = g_to_text(e);
+		// if there's any manipulation we want to do to the function
+		// name before it's searched, do it here before returning.
+		return (func);
+	}
+	function update_text(e) {
+		var r = find_child(e, "rect");
+		var t = find_child(e, "text");
+		var w = parseFloat(r.attributes.width.value) -3;
+		var txt = find_child(e, "title").textContent.replace(/\([^(]*\)$/,"");
+		t.attributes.x.value = parseFloat(r.attributes.x.value) + 3;
+
+		// Smaller than this size won't fit anything
+		if (w < 2 * 12 * 0.59) {
+			t.textContent = "";
+			return;
+		}
+
+		t.textContent = txt;
+		var sl = t.getSubStringLength(0, txt.length);
+		// check if only whitespace or if we can fit the entire string into width w
+		if (/^ *$/.test(txt) || sl < w)
+			return;
+
+		// this isn't perfect, but gives a good starting point
+		// and avoids calling getSubStringLength too often
+		var start = Math.floor((w/sl) * txt.length);
+		for (var x = start; x > 0; x = x-2) {
+			if (t.getSubStringLength(0, x + 2) <= w) {
+				t.textContent = txt.substring(0, x) + "..";
+				return;
+			}
+		}
+		t.textContent = "";
+	}
+
+	// zoom
+	function zoom_reset(e) {
+		if (e.attributes != undefined) {
+			orig_load(e, "x");
+			orig_load(e, "width");
+		}
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_reset(c[i]);
+		}
+	}
+	function zoom_child(e, x, ratio) {
+		if (e.attributes != undefined) {
+			if (e.attributes.x != undefined) {
+				orig_save(e, "x");
+				e.attributes.x.value = (parseFloat(e.attributes.x.value) - x - 10) * ratio + 10;
+				if (e.tagName == "text")
+					e.attributes.x.value = find_child(e.parentNode, "rect[x]").attributes.x.value + 3;
+			}
+			if (e.attributes.width != undefined) {
+				orig_save(e, "width");
+				e.attributes.width.value = parseFloat(e.attributes.width.value) * ratio;
+			}
+		}
+
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_child(c[i], x - 10, ratio);
+		}
+	}
+	function zoom_parent(e) {
+		if (e.attributes) {
+			if (e.attributes.x != undefined) {
+				orig_save(e, "x");
+				e.attributes.x.value = 10;
+			}
+			if (e.attributes.width != undefined) {
+				orig_save(e, "width");
+				e.attributes.width.value = parseInt(svg.width.baseVal.value) - (10 * 2);
+			}
+		}
+		if (e.childNodes == undefined) return;
+		for (var i = 0, c = e.childNodes; i < c.length; i++) {
+			zoom_parent(c[i]);
+		}
+	}
+	function zoom(node) {
+		var attr = find_child(node, "rect").attributes;
+		var width = parseFloat(attr.width.value);
+		var xmin = parseFloat(attr.x.value);
+		var xmax = parseFloat(xmin + width);
+		var ymin = parseFloat(attr.y.value);
+		var ratio = (svg.width.baseVal.value - 2 * 10) / width;
+
+		// XXX: Workaround for JavaScript float issues (fix me)
+		var fudge = 0.0001;
+
+		unzoombtn.classList.remove("hide");
+
+		var el = document.getElementById("frames").children;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			var a = find_child(e, "rect").attributes;
+			var ex = parseFloat(a.x.value);
+			var ew = parseFloat(a.width.value);
+			var upstack;
+			// Is it an ancestor
+			if (0 == 0) {
+				upstack = parseFloat(a.y.value) > ymin;
+			} else {
+				upstack = parseFloat(a.y.value) < ymin;
+			}
+			if (upstack) {
+				// Direct ancestor
+				if (ex <= xmin && (ex+ew+fudge) >= xmax) {
+					e.classList.add("parent");
+					zoom_parent(e);
+					update_text(e);
+				}
+				// not in current path
+				else
+					e.classList.add("hide");
+			}
+			// Children maybe
+			else {
+				// no common path
+				if (ex < xmin || ex + fudge >= xmax) {
+					e.classList.add("hide");
+				}
+				else {
+					zoom_child(e, xmin, ratio);
+					update_text(e);
+				}
+			}
+		}
+		search();
+	}
+	function unzoom(dont_update_text) {
+		unzoombtn.classList.add("hide");
+		var el = document.getElementById("frames").children;
+		for(var i = 0; i < el.length; i++) {
+			el[i].classList.remove("parent");
+			el[i].classList.remove("hide");
+			zoom_reset(el[i]);
+			if(!dont_update_text) update_text(el[i]);
+		}
+		search();
+	}
+	function clearzoom() {
+		unzoom();
+
+		// remove zoom state
+		var params = get_params();
+		if (params.x) delete params.x;
+		if (params.y) delete params.y;
+		history.replaceState(null, null, parse_params(params));
+	}
+
+	// search
+	function toggle_ignorecase() {
+		ignorecase = !ignorecase;
+		if (ignorecase) {
+			ignorecaseBtn.classList.add("show");
+		} else {
+			ignorecaseBtn.classList.remove("show");
+		}
+		reset_search();
+		search();
+	}
+	function reset_search() {
+		var el = document.querySelectorAll("#frames rect");
+		for (var i = 0; i < el.length; i++) {
+			orig_load(el[i], "fill")
+		}
+		var params = get_params();
+		delete params.s;
+		history.replaceState(null, null, parse_params(params));
+	}
+	function search_prompt() {
+		if (!searching) {
+			var term = prompt("Enter a search term (regexp " +
+			    "allowed, eg: ^ext4_)"
+			    + (ignorecase ? ", ignoring case" : "")
+			    + "\nPress Ctrl-i to toggle case sensitivity", "");
+			if (term != null) search(term);
+		} else {
+			reset_search();
+			searching = 0;
+			currentSearchTerm = null;
+			searchbtn.classList.remove("show");
+			searchbtn.firstChild.nodeValue = "Search"
+			matchedtxt.classList.add("hide");
+			matchedtxt.firstChild.nodeValue = ""
+		}
+	}
+	function search(term) {
+		if (term) currentSearchTerm = term;
+		if (currentSearchTerm === null) return;
+
+		var re = new RegExp(currentSearchTerm, ignorecase ? 'i' : '');
+		var el = document.getElementById("frames").children;
+		var matches = new Object();
+		var maxwidth = 0;
+		for (var i = 0; i < el.length; i++) {
+			var e = el[i];
+			var func = g_to_func(e);
+			var rect = find_child(e, "rect");
+			if (func == null || rect == null)
+				continue;
+
+			// Save max width. Only works as we have a root frame
+			var w = parseFloat(rect.attributes.width.value);
+			if (w > maxwidth)
+				maxwidth = w;
+
+			if (func.match(re)) {
+				// highlight
+				var x = parseFloat(rect.attributes.x.value);
+				orig_save(rect, "fill");
+				rect.attributes.fill.value = "rgb(230,0,230)";
+
+				// remember matches
+				if (matches[x] == undefined) {
+					matches[x] = w;
+				} else {
+					if (w > matches[x]) {
+						// overwrite with parent
+						matches[x] = w;
+					}
+				}
+				searching = 1;
+			}
+		}
+		if (!searching)
+			return;
+		var params = get_params();
+		params.s = currentSearchTerm;
+		history.replaceState(null, null, parse_params(params));
+
+		searchbtn.classList.add("show");
+		searchbtn.firstChild.nodeValue = "Reset Search";
+
+		// calculate percent matched, excluding vertical overlap
+		var count = 0;
+		var lastx = -1;
+		var lastw = 0;
+		var keys = Array();
+		for (k in matches) {
+			if (matches.hasOwnProperty(k))
+				keys.push(k);
+		}
+		// sort the matched frames by their x location
+		// ascending, then width descending
+		keys.sort(function(a, b){
+			return a - b;
+		});
+		// Step through frames saving only the biggest bottom-up frames
+		// thanks to the sort order. This relies on the tree property
+		// where children are always smaller than their parents.
+		var fudge = 0.0001;	// JavaScript floating point
+		for (var k in keys) {
+			var x = parseFloat(keys[k]);
+			var w = matches[keys[k]];
+			if (x >= lastx + lastw - fudge) {
+				count += w;
+				lastx = x;
+				lastw = w;
+			}
+		}
+		// display matched percent
+		matchedtxt.classList.remove("hide");
+		var pct = 100 * count / maxwidth;
+		if (pct != 100) pct = pct.toFixed(1)
+		matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+	}
+]]>
+</script>
+<rect x="0.0" y="0" width="1200.0" height="278.0" fill="url(#background)"  />
+<text id="title" x="600.00" y="24" >Flame Graph</text>
+<text id="details" x="10.00" y="261" > </text>
+<text id="unzoom" x="10.00" y="24" class="hide">Reset Zoom</text>
+<text id="search" x="1090.00" y="24" >Search</text>
+<text id="ignorecase" x="1174.00" y="24" >ic</text>
+<text id="matched" x="1090.00" y="261" > </text>
+<g id="frames">
+<g >
+<title>clock_gettime@@GLIBC_2.17 (1,000,200 samples, 0.67%)</title><rect x="377.1" y="53" width="7.9" height="15.0" fill="rgb(250,209,50)" rx="2" ry="2" />
+<text  x="380.08" y="63.5" ></text>
+</g>
+<g >
+<title>Trading::TradeEngine::TradeEngine (3,000,600 samples, 2.00%)</title><rect x="181.7" y="133" width="23.7" height="15.0" fill="rgb(224,90,21)" rx="2" ry="2" />
+<text  x="184.72" y="143.5" >T..</text>
+</g>
+<g >
+<title>std::locale::operator= (200,040 samples, 0.13%)</title><rect x="10.0" y="85" width="1.6" height="15.0" fill="rgb(242,173,41)" rx="2" ry="2" />
+<text  x="13.00" y="95.5" ></text>
+</g>
+<g >
+<title>std::chrono::_V2::steady_clock::now (4,200,840 samples, 2.80%)</title><rect x="320.4" y="85" width="33.0" height="15.0" fill="rgb(249,203,48)" rx="2" ry="2" />
+<text  x="323.36" y="95.5" >st..</text>
+</g>
+<g >
+<title>_dl_start_user (800,160 samples, 0.53%)</title><rect x="10.0" y="197" width="6.3" height="15.0" fill="rgb(236,145,34)" rx="2" ry="2" />
+<text  x="13.00" y="207.5" ></text>
+</g>
+<g >
+<title>std::codecvt&lt;char, char, __mbstate_t&gt;::do_always_noconv (3,000,600 samples, 2.00%)</title><rect x="1084.4" y="117" width="23.7" height="15.0" fill="rgb(211,31,7)" rx="2" ry="2" />
+<text  x="1087.45" y="127.5" >s..</text>
+</g>
+<g >
+<title>void std::__introsort_loop&lt;__gnu_cxx::__normal_iterator&lt;unsigned long*, std::vector&lt;unsigned long, std::allocator&lt;unsigned long&gt; &gt; &gt;, long, __gnu_cxx::__ops::_Iter_less_iter&gt; (1,200,240 samples, 0.80%)</title><rect x="745.7" y="101" width="9.5" height="15.0" fill="rgb(205,0,0)" rx="2" ry="2" />
+<text  x="748.73" y="111.5" ></text>
+</g>
+<g >
+<title>__vdso_clock_gettime (7,601,520 samples, 5.07%)</title><rect x="578.7" y="69" width="59.9" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="581.73" y="79.5" >__vdso..</text>
+</g>
+<g >
+<title>clock_gettime@@GLIBC_2.17 (200,040 samples, 0.13%)</title><rect x="574.0" y="101" width="1.6" height="15.0" fill="rgb(250,209,50)" rx="2" ry="2" />
+<text  x="577.01" y="111.5" ></text>
+</g>
+<g >
+<title>std::basic_ostream&lt;char, std::char_traits&lt;char&gt; &gt;&amp; std::__ostream_insert&lt;char, std::char_traits&lt;char&gt; &gt; (14,402,880 samples, 9.61%)</title><rect x="1004.1" y="133" width="113.4" height="15.0" fill="rgb(220,73,17)" rx="2" ry="2" />
+<text  x="1007.10" y="143.5" >std::basic_ost..</text>
+</g>
+<g >
+<title>main (87,217,440 samples, 58.21%)</title><rect x="68.3" y="149" width="686.9" height="15.0" fill="rgb(243,179,42)" rx="2" ry="2" />
+<text  x="71.29" y="159.5" >main</text>
+</g>
+<g >
+<title>__vdso_clock_gettime (2,600,520 samples, 1.74%)</title><rect x="717.4" y="101" width="20.5" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="720.37" y="111.5" ></text>
+</g>
+<g >
+<title>std::basic_ostream&lt;char, std::char_traits&lt;char&gt; &gt;&amp; std::__ostream_insert&lt;char, std::char_traits&lt;char&gt; &gt; (200,040 samples, 0.13%)</title><rect x="783.5" y="149" width="1.6" height="15.0" fill="rgb(220,73,17)" rx="2" ry="2" />
+<text  x="786.54" y="159.5" ></text>
+</g>
+<g >
+<title>std::chrono::_V2::system_clock::now (1,800,360 samples, 1.20%)</title><rect x="279.4" y="85" width="14.2" height="15.0" fill="rgb(224,91,21)" rx="2" ry="2" />
+<text  x="282.40" y="95.5" ></text>
+</g>
+<g >
+<title>std::_Function_handler&lt;void  (2,200,440 samples, 1.47%)</title><rect x="164.4" y="117" width="17.3" height="15.0" fill="rgb(245,187,44)" rx="2" ry="2" />
+<text  x="167.39" y="127.5" ></text>
+</g>
+<g >
+<title>void Common::AsyncLogger::ProducerHandle::logFixed&lt;Trading::TradeEngine::recordLatency (4,000,800 samples, 2.67%)</title><rect x="399.1" y="101" width="31.5" height="15.0" fill="rgb(225,96,23)" rx="2" ry="2" />
+<text  x="402.13" y="111.5" >vo..</text>
+</g>
+<g >
+<title>std::chrono::_V2::steady_clock::now (6,001,200 samples, 4.01%)</title><rect x="638.6" y="117" width="47.3" height="15.0" fill="rgb(249,203,48)" rx="2" ry="2" />
+<text  x="641.60" y="127.5" >std:..</text>
+</g>
+<g >
+<title>std::chrono::_V2::steady_clock::now (2,400,480 samples, 1.60%)</title><rect x="145.5" y="117" width="18.9" height="15.0" fill="rgb(249,203,48)" rx="2" ry="2" />
+<text  x="148.49" y="127.5" ></text>
+</g>
+<g >
+<title>Trading::OrderGateway::processPending (2,200,440 samples, 1.47%)</title><rect x="164.4" y="133" width="17.3" height="15.0" fill="rgb(228,108,25)" rx="2" ry="2" />
+<text  x="167.39" y="143.5" ></text>
+</g>
+<g >
+<title>__vdso_clock_gettime (800,160 samples, 0.53%)</title><rect x="173.8" y="53" width="6.3" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="176.85" y="63.5" ></text>
+</g>
+<g >
+<title>Trading::TradeEngine::processClientResponses (400,080 samples, 0.27%)</title><rect x="205.4" y="133" width="3.1" height="15.0" fill="rgb(251,214,51)" rx="2" ry="2" />
+<text  x="208.35" y="143.5" ></text>
+</g>
+<g >
+<title>__vdso_clock_gettime (4,000,800 samples, 2.67%)</title><rect x="321.9" y="53" width="31.5" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="324.94" y="63.5" >__..</text>
+</g>
+<g >
+<title>std::__basic_file&lt;char&gt;::xsgetn (400,080 samples, 0.27%)</title><rect x="711.1" y="101" width="3.1" height="15.0" fill="rgb(219,66,15)" rx="2" ry="2" />
+<text  x="714.07" y="111.5" ></text>
+</g>
+<g >
+<title>std::ios_base_library_init (200,040 samples, 0.13%)</title><rect x="10.0" y="133" width="1.6" height="15.0" fill="rgb(235,138,33)" rx="2" ry="2" />
+<text  x="13.00" y="143.5" ></text>
+</g>
+<g >
+<title>std::basic_streambuf&lt;char, std::char_traits&lt;char&gt; &gt;::xsputn (200,040 samples, 0.13%)</title><rect x="1161.6" y="117" width="1.6" height="15.0" fill="rgb(244,181,43)" rx="2" ry="2" />
+<text  x="1164.64" y="127.5" ></text>
+</g>
+<g >
+<title>_dl_relocate_object (400,080 samples, 0.27%)</title><rect x="11.6" y="133" width="3.1" height="15.0" fill="rgb(231,120,28)" rx="2" ry="2" />
+<text  x="14.58" y="143.5" ></text>
+</g>
+<g >
+<title>__vdso_clock_gettime (2,400,480 samples, 1.60%)</title><rect x="249.5" y="69" width="18.9" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="252.47" y="79.5" ></text>
+</g>
+<g >
+<title>Trading::OrderManager::moveOpenOrder (1,600,320 samples, 1.07%)</title><rect x="306.2" y="85" width="12.6" height="15.0" fill="rgb(247,195,46)" rx="2" ry="2" />
+<text  x="309.18" y="95.5" ></text>
+</g>
+<g >
+<title>Trading::TradeEngine::processMarketUpdates (200,040 samples, 0.13%)</title><rect x="208.5" y="133" width="1.6" height="15.0" fill="rgb(243,178,42)" rx="2" ry="2" />
+<text  x="211.50" y="143.5" ></text>
+</g>
+<g >
+<title>[libstdc++.so.6.0.33] (54,410,880 samples, 36.32%)</title><rect x="761.5" y="165" width="428.5" height="15.0" fill="rgb(216,51,12)" rx="2" ry="2" />
+<text  x="764.48" y="175.5" >[libstdc++.so.6.0.33]</text>
+</g>
+<g >
+<title>void Common::AsyncLogger::ProducerHandle::logFixed&lt;Trading::TradeEngine::recordLatency (3,200,640 samples, 2.14%)</title><rect x="268.4" y="101" width="25.2" height="15.0" fill="rgb(225,96,23)" rx="2" ry="2" />
+<text  x="271.37" y="111.5" >v..</text>
+</g>
+<g >
+<title>memcmp@plt (600,120 samples, 0.40%)</title><rect x="756.8" y="149" width="4.7" height="15.0" fill="rgb(251,214,51)" rx="2" ry="2" />
+<text  x="759.76" y="159.5" ></text>
+</g>
+<g >
+<title>std::basic_filebuf&lt;char, std::char_traits&lt;char&gt; &gt;::xsputn (1,800,360 samples, 1.20%)</title><rect x="989.9" y="133" width="14.2" height="15.0" fill="rgb(218,64,15)" rx="2" ry="2" />
+<text  x="992.92" y="143.5" ></text>
+</g>
+<g >
+<title>_dl_runtime_resolve_xsavec (200,040 samples, 0.13%)</title><rect x="203.8" y="101" width="1.6" height="15.0" fill="rgb(217,59,14)" rx="2" ry="2" />
+<text  x="206.78" y="111.5" ></text>
+</g>
+<g >
+<title>__vdso_clock_gettime (1,000,200 samples, 0.67%)</title><rect x="377.1" y="37" width="7.9" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="380.08" y="47.5" ></text>
+</g>
+<g >
+<title>std::thread::_State_impl&lt;std::thread::_Invoker&lt;std::tuple&lt;Common::AsyncLogger::start (51,210,240 samples, 34.18%)</title><rect x="785.1" y="149" width="403.3" height="15.0" fill="rgb(233,133,31)" rx="2" ry="2" />
+<text  x="788.11" y="159.5" >std::thread::_State_impl&lt;std::thread::_Invoker&lt;std::tu..</text>
+</g>
+<g >
+<title>__memmove_avx512_unaligned_erms (800,160 samples, 0.53%)</title><rect x="1172.7" y="101" width="6.3" height="15.0" fill="rgb(223,84,20)" rx="2" ry="2" />
+<text  x="1175.67" y="111.5" ></text>
+</g>
+<g >
+<title>std::chrono::_V2::steady_clock::now (2,600,520 samples, 1.74%)</title><rect x="717.4" y="133" width="20.5" height="15.0" fill="rgb(249,203,48)" rx="2" ry="2" />
+<text  x="720.37" y="143.5" ></text>
+</g>
+<g >
+<title>Trading::TradeEngine::sendClientRequest (400,080 samples, 0.27%)</title><rect x="315.6" y="69" width="3.2" height="15.0" fill="rgb(206,5,1)" rx="2" ry="2" />
+<text  x="318.63" y="79.5" ></text>
+</g>
+<g >
+<title>Trading::TradeEngine::handleJevDecision (10,002,000 samples, 6.68%)</title><rect x="306.2" y="101" width="78.8" height="15.0" fill="rgb(235,140,33)" rx="2" ry="2" />
+<text  x="309.18" y="111.5" >Trading::..</text>
+</g>
+<g >
+<title>std::ostream::sentry::sentry (1,200,240 samples, 0.80%)</title><rect x="1108.1" y="117" width="9.4" height="15.0" fill="rgb(251,214,51)" rx="2" ry="2" />
+<text  x="1111.08" y="127.5" ></text>
+</g>
+<g >
+<title>std::basic_filebuf&lt;char, std::char_traits&lt;char&gt; &gt;::xsputn (4,400,880 samples, 2.94%)</title><rect x="1043.5" y="117" width="34.6" height="15.0" fill="rgb(218,64,15)" rx="2" ry="2" />
+<text  x="1046.48" y="127.5" >st..</text>
+</g>
+<g >
+<title>strlen@plt (200,040 samples, 0.13%)</title><rect x="1188.4" y="149" width="1.6" height="15.0" fill="rgb(240,162,38)" rx="2" ry="2" />
+<text  x="1191.42" y="159.5" ></text>
+</g>
+<g >
+<title>Trading::OrderManager::moveOpenOrder (200,040 samples, 0.13%)</title><rect x="304.6" y="101" width="1.6" height="15.0" fill="rgb(247,195,46)" rx="2" ry="2" />
+<text  x="307.61" y="111.5" ></text>
+</g>
+<g >
+<title>__vdso_clock_gettime (800,160 samples, 0.53%)</title><rect x="488.9" y="53" width="6.3" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="491.93" y="63.5" ></text>
+</g>
+<g >
+<title>std::locale::id::_M_id (200,040 samples, 0.13%)</title><rect x="1180.5" y="101" width="1.6" height="15.0" fill="rgb(222,82,19)" rx="2" ry="2" />
+<text  x="1183.55" y="111.5" ></text>
+</g>
+<g >
+<title>void std::__introsort_loop&lt;__gnu_cxx::__normal_iterator&lt;unsigned long*, std::vector&lt;unsigned long, std::allocator&lt;unsigned long&gt; &gt; &gt;, long, __gnu_cxx::__ops::_Iter_less_iter&gt; (1,600,320 samples, 1.07%)</title><rect x="742.6" y="117" width="12.6" height="15.0" fill="rgb(205,0,0)" rx="2" ry="2" />
+<text  x="745.58" y="127.5" ></text>
+</g>
+<g >
+<title>__memset_avx512_unaligned_erms (400,080 samples, 0.27%)</title><rect x="690.6" y="133" width="3.1" height="15.0" fill="rgb(214,43,10)" rx="2" ry="2" />
+<text  x="693.59" y="143.5" ></text>
+</g>
+<g >
+<title>clock_gettime@@GLIBC_2.17 (5,001,000 samples, 3.34%)</title><rect x="646.5" y="101" width="39.4" height="15.0" fill="rgb(250,209,50)" rx="2" ry="2" />
+<text  x="649.48" y="111.5" >clo..</text>
+</g>
+<g >
+<title>clock_gettime@@GLIBC_2.17 (1,000,200 samples, 0.67%)</title><rect x="422.8" y="69" width="7.8" height="15.0" fill="rgb(250,209,50)" rx="2" ry="2" />
+<text  x="425.76" y="79.5" ></text>
+</g>
+<g >
+<title>memcpy@plt (400,080 samples, 0.27%)</title><rect x="1040.3" y="117" width="3.2" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="1043.33" y="127.5" ></text>
+</g>
+<g >
+<title>dl_main (400,080 samples, 0.27%)</title><rect x="11.6" y="149" width="3.1" height="15.0" fill="rgb(236,145,34)" rx="2" ry="2" />
+<text  x="14.58" y="159.5" ></text>
+</g>
+<g >
+<title>clock_gettime@@GLIBC_2.17 (200,040 samples, 0.13%)</title><rect x="452.7" y="101" width="1.6" height="15.0" fill="rgb(250,209,50)" rx="2" ry="2" />
+<text  x="455.70" y="111.5" ></text>
+</g>
+<g >
+<title>__vdso_clock_gettime (1,200,240 samples, 0.80%)</title><rect x="389.7" y="69" width="9.4" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="392.68" y="79.5" ></text>
+</g>
+<g >
+<title>__memchr_evex (600,120 samples, 0.40%)</title><rect x="685.9" y="133" width="4.7" height="15.0" fill="rgb(221,76,18)" rx="2" ry="2" />
+<text  x="688.86" y="143.5" ></text>
+</g>
+<g >
+<title>_start (94,618,920 samples, 63.15%)</title><rect x="16.3" y="197" width="745.2" height="15.0" fill="rgb(245,185,44)" rx="2" ry="2" />
+<text  x="19.30" y="207.5" >_start</text>
+</g>
+<g >
+<title>std::ostream&amp; std::ostream::_M_insert&lt;long&gt; (8,201,640 samples, 5.47%)</title><rect x="1117.5" y="133" width="64.6" height="15.0" fill="rgb(205,2,0)" rx="2" ry="2" />
+<text  x="1120.53" y="143.5" >std::os..</text>
+</g>
+<g >
+<title>Trading::TradeEngine::processClientResponses (10,402,080 samples, 6.94%)</title><rect x="211.7" y="117" width="81.9" height="15.0" fill="rgb(251,214,51)" rx="2" ry="2" />
+<text  x="214.66" y="127.5" >Trading::..</text>
+</g>
+<g >
+<title>Trading::TradeEngine::handleMarketUpdate (800,160 samples, 0.53%)</title><rect x="444.8" y="101" width="6.3" height="15.0" fill="rgb(236,143,34)" rx="2" ry="2" />
+<text  x="447.82" y="111.5" ></text>
+</g>
+<g >
+<title>std::chrono::_V2::steady_clock::now (2,600,520 samples, 1.74%)</title><rect x="247.9" y="101" width="20.5" height="15.0" fill="rgb(249,203,48)" rx="2" ry="2" />
+<text  x="250.89" y="111.5" ></text>
+</g>
+<g >
+<title>__vdso_clock_gettime (2,200,440 samples, 1.47%)</title><rect x="147.1" y="85" width="17.3" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="150.06" y="95.5" ></text>
+</g>
+<g >
+<title>__vdso_clock_gettime (2,000,400 samples, 1.34%)</title><rect x="455.8" y="69" width="15.8" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="458.85" y="79.5" ></text>
+</g>
+<g >
+<title>clock_gettime@@GLIBC_2.17 (1,000,200 samples, 0.67%)</title><rect x="172.3" y="69" width="7.8" height="15.0" fill="rgb(250,209,50)" rx="2" ry="2" />
+<text  x="175.27" y="79.5" ></text>
+</g>
+<g >
+<title>Trading::TradeEngine::processPending (60,412,080 samples, 40.32%)</title><rect x="210.1" y="133" width="475.8" height="15.0" fill="rgb(207,9,2)" rx="2" ry="2" />
+<text  x="213.08" y="143.5" >Trading::TradeEngine::processPending</text>
+</g>
+<g >
+<title>clock_gettime@@GLIBC_2.17 (200,040 samples, 0.13%)</title><rect x="318.8" y="85" width="1.6" height="15.0" fill="rgb(250,209,50)" rx="2" ry="2" />
+<text  x="321.79" y="95.5" ></text>
+</g>
+<g >
+<title>std::chrono::_V2::steady_clock::now (1,800,360 samples, 1.20%)</title><rect x="385.0" y="101" width="14.1" height="15.0" fill="rgb(249,203,48)" rx="2" ry="2" />
+<text  x="387.95" y="111.5" ></text>
+</g>
+<g >
+<title>[libstdc++.so.6.0.33] (5,001,000 samples, 3.34%)</title><rect x="1122.3" y="117" width="39.3" height="15.0" fill="rgb(216,51,12)" rx="2" ry="2" />
+<text  x="1125.26" y="127.5" >[li..</text>
+</g>
+<g >
+<title>operator new (400,080 samples, 0.27%)</title><rect x="696.9" y="133" width="3.1" height="15.0" fill="rgb(216,51,12)" rx="2" ry="2" />
+<text  x="699.89" y="143.5" ></text>
+</g>
+<g >
+<title>__memcmp_evex_movbe (2,200,440 samples, 1.47%)</title><rect x="49.4" y="149" width="17.3" height="15.0" fill="rgb(219,67,16)" rx="2" ry="2" />
+<text  x="52.39" y="159.5" ></text>
+</g>
+<g >
+<title>clock_gettime@@GLIBC_2.17 (7,601,520 samples, 5.07%)</title><rect x="578.7" y="85" width="59.9" height="15.0" fill="rgb(250,209,50)" rx="2" ry="2" />
+<text  x="581.73" y="95.5" >clock_..</text>
+</g>
+<g >
+<title>void std::__introsort_loop&lt;__gnu_cxx::__normal_iterator&lt;unsigned long*, std::vector&lt;unsigned long, std::allocator&lt;unsigned long&gt; &gt; &gt;, long, __gnu_cxx::__ops::_Iter_less_iter&gt; (200,040 samples, 0.13%)</title><rect x="753.6" y="37" width="1.6" height="15.0" fill="rgb(205,0,0)" rx="2" ry="2" />
+<text  x="756.60" y="47.5" ></text>
+</g>
+<g >
+<title>__libc_start_call_main (94,618,920 samples, 63.15%)</title><rect x="16.3" y="165" width="745.2" height="15.0" fill="rgb(210,26,6)" rx="2" ry="2" />
+<text  x="19.30" y="175.5" >__libc_start_call_main</text>
+</g>
+<g >
+<title>__memmove_avx512_unaligned_erms (400,080 samples, 0.27%)</title><rect x="704.8" y="117" width="3.1" height="15.0" fill="rgb(223,84,20)" rx="2" ry="2" />
+<text  x="707.77" y="127.5" ></text>
+</g>
+<g >
+<title>_dl_start (600,120 samples, 0.40%)</title><rect x="11.6" y="181" width="4.7" height="15.0" fill="rgb(237,151,36)" rx="2" ry="2" />
+<text  x="14.58" y="191.5" ></text>
+</g>
+<g >
+<title>__GI___pthread_self (200,040 samples, 0.13%)</title><rect x="451.1" y="101" width="1.6" height="15.0" fill="rgb(243,175,41)" rx="2" ry="2" />
+<text  x="454.12" y="111.5" ></text>
+</g>
+<g >
+<title>void std::__introsort_loop&lt;__gnu_cxx::__normal_iterator&lt;unsigned long*, std::vector&lt;unsigned long, std::allocator&lt;unsigned long&gt; &gt; &gt;, long, __gnu_cxx::__ops::_Iter_less_iter&gt; (200,040 samples, 0.13%)</title><rect x="753.6" y="69" width="1.6" height="15.0" fill="rgb(205,0,0)" rx="2" ry="2" />
+<text  x="756.60" y="79.5" ></text>
+</g>
+<g >
+<title>start_thread (54,410,880 samples, 36.32%)</title><rect x="761.5" y="181" width="428.5" height="15.0" fill="rgb(212,34,8)" rx="2" ry="2" />
+<text  x="764.48" y="191.5" >start_thread</text>
+</g>
+<g >
+<title>clock_gettime@@GLIBC_2.17 (2,400,480 samples, 1.60%)</title><rect x="145.5" y="101" width="18.9" height="15.0" fill="rgb(250,209,50)" rx="2" ry="2" />
+<text  x="148.49" y="111.5" ></text>
+</g>
+<g >
+<title>__vdso_clock_gettime (5,001,000 samples, 3.34%)</title><rect x="646.5" y="85" width="39.4" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="649.48" y="95.5" >__v..</text>
+</g>
+<g >
+<title>Trading::TradeEngine::processJevDecisions (17,403,480 samples, 11.62%)</title><rect x="293.6" y="117" width="137.0" height="15.0" fill="rgb(243,175,41)" rx="2" ry="2" />
+<text  x="296.58" y="127.5" >Trading::TradeEng..</text>
+</g>
+<g >
+<title>clock_gettime@@GLIBC_2.17 (2,400,480 samples, 1.60%)</title><rect x="249.5" y="85" width="18.9" height="15.0" fill="rgb(250,209,50)" rx="2" ry="2" />
+<text  x="252.47" y="95.5" ></text>
+</g>
+<g >
+<title>_int_free (200,040 samples, 0.13%)</title><rect x="695.3" y="117" width="1.6" height="15.0" fill="rgb(247,196,46)" rx="2" ry="2" />
+<text  x="698.31" y="127.5" ></text>
+</g>
+<g >
+<title>void Common::AsyncLogger::ProducerHandle::logFixed&lt;Trading::TradeEngine::recordLatency (3,000,600 samples, 2.00%)</title><rect x="471.6" y="101" width="23.6" height="15.0" fill="rgb(225,96,23)" rx="2" ry="2" />
+<text  x="474.60" y="111.5" >v..</text>
+</g>
+<g >
+<title>_dl_lookup_symbol_x (400,080 samples, 0.27%)</title><rect x="11.6" y="117" width="3.1" height="15.0" fill="rgb(211,28,6)" rx="2" ry="2" />
+<text  x="14.58" y="127.5" ></text>
+</g>
+<g >
+<title>clock_gettime@plt (200,040 samples, 0.13%)</title><rect x="143.9" y="117" width="1.6" height="15.0" fill="rgb(229,112,27)" rx="2" ry="2" />
+<text  x="146.91" y="127.5" ></text>
+</g>
+<g >
+<title>std::basic_istream&lt;char, std::char_traits&lt;char&gt; &gt;&amp; std::getline&lt;char, std::char_traits&lt;char&gt;, std::allocator&lt;char&gt; &gt; (2,000,400 samples, 1.34%)</title><rect x="701.6" y="133" width="15.8" height="15.0" fill="rgb(244,181,43)" rx="2" ry="2" />
+<text  x="704.62" y="143.5" ></text>
+</g>
+<g >
+<title>std::ostream::put (800,160 samples, 0.53%)</title><rect x="1182.1" y="133" width="6.3" height="15.0" fill="rgb(219,64,15)" rx="2" ry="2" />
+<text  x="1185.12" y="143.5" ></text>
+</g>
+<g >
+<title>__vdso_clock_gettime (1,000,200 samples, 0.67%)</title><rect x="422.8" y="53" width="7.8" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="425.76" y="63.5" ></text>
+</g>
+<g >
+<title>std::istream::sentry::sentry (400,080 samples, 0.27%)</title><rect x="714.2" y="117" width="3.2" height="15.0" fill="rgb(240,163,39)" rx="2" ry="2" />
+<text  x="717.22" y="127.5" ></text>
+</g>
+<g >
+<title>memcpy@plt (200,040 samples, 0.13%)</title><rect x="707.9" y="117" width="1.6" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="710.92" y="127.5" ></text>
+</g>
+<g >
+<title>__memchr_evex (4,200,840 samples, 2.80%)</title><rect x="16.3" y="149" width="33.1" height="15.0" fill="rgb(221,76,18)" rx="2" ry="2" />
+<text  x="19.30" y="159.5" >__..</text>
+</g>
+<g >
+<title>[libstdc++.so.6.0.33] (200,040 samples, 0.13%)</title><rect x="1171.1" y="101" width="1.6" height="15.0" fill="rgb(216,51,12)" rx="2" ry="2" />
+<text  x="1174.09" y="111.5" ></text>
+</g>
+<g >
+<title>void std::__introsort_loop&lt;__gnu_cxx::__normal_iterator&lt;unsigned long*, std::vector&lt;unsigned long, std::allocator&lt;unsigned long&gt; &gt; &gt;, long, __gnu_cxx::__ops::_Iter_less_iter&gt; (2,200,440 samples, 1.47%)</title><rect x="737.9" y="133" width="17.3" height="15.0" fill="rgb(205,0,0)" rx="2" ry="2" />
+<text  x="740.85" y="143.5" ></text>
+</g>
+<g >
+<title>clock_gettime@@GLIBC_2.17 (1,800,360 samples, 1.20%)</title><rect x="279.4" y="69" width="14.2" height="15.0" fill="rgb(250,209,50)" rx="2" ry="2" />
+<text  x="282.40" y="79.5" ></text>
+</g>
+<g >
+<title>__memmove_avx512_unaligned_erms (1,200,240 samples, 0.80%)</title><rect x="1030.9" y="117" width="9.4" height="15.0" fill="rgb(223,84,20)" rx="2" ry="2" />
+<text  x="1033.88" y="127.5" ></text>
+</g>
+<g >
+<title>clock_gettime@@GLIBC_2.17 (2,600,520 samples, 1.74%)</title><rect x="717.4" y="117" width="20.5" height="15.0" fill="rgb(250,209,50)" rx="2" ry="2" />
+<text  x="720.37" y="127.5" ></text>
+</g>
+<g >
+<title>call_init.part.0 (200,040 samples, 0.13%)</title><rect x="10.0" y="165" width="1.6" height="15.0" fill="rgb(231,122,29)" rx="2" ry="2" />
+<text  x="13.00" y="175.5" ></text>
+</g>
+<g >
+<title>void std::__introsort_loop&lt;__gnu_cxx::__normal_iterator&lt;unsigned long*, std::vector&lt;unsigned long, std::allocator&lt;unsigned long&gt; &gt; &gt;, long, __gnu_cxx::__ops::_Iter_less_iter&gt; (200,040 samples, 0.13%)</title><rect x="753.6" y="53" width="1.6" height="15.0" fill="rgb(205,0,0)" rx="2" ry="2" />
+<text  x="756.60" y="63.5" ></text>
+</g>
+<g >
+<title>Trading::TradeEngine::buildJevEvaluationState (3,600,720 samples, 2.40%)</title><rect x="545.6" y="101" width="28.4" height="15.0" fill="rgb(254,227,54)" rx="2" ry="2" />
+<text  x="548.65" y="111.5" >Tr..</text>
+</g>
+<g >
+<title>__vdso_clock_gettime (1,800,360 samples, 1.20%)</title><rect x="279.4" y="53" width="14.2" height="15.0" fill="rgb(254,226,54)" rx="2" ry="2" />
+<text  x="282.40" y="63.5" ></text>
+</g>
+<g >
+<title>clock_gettime@@GLIBC_2.17 (4,000,800 samples, 2.67%)</title><rect x="321.9" y="69" width="31.5" height="15.0" fill="rgb(250,209,50)" rx="2" ry="2" />
+<text  x="324.94" y="79.5" >cl..</text>
+</g>
+<g >
+<title>clone3 (54,410,880 samples, 36.32%)</title><rect x="761.5" y="197" width="428.5" height="15.0" fill="rgb(216,54,12)" rx="2" ry="2" />
+<text  x="764.48" y="207.5" >clone3</text>
+</g>
+<g >
+<title>std::chrono::_V2::steady_clock::now (2,200,440 samples, 1.47%)</title><rect x="454.3" y="101" width="17.3" height="15.0" fill="rgb(249,203,48)" rx="2" ry="2" />
+<text  x="457.27" y="111.5" ></text>
+</g>
+<g >
+<title>memchr@plt (200,040 samples, 0.13%)</title><rect x="755.2" y="149" width="1.6" height="15.0" fill="rgb(221,74,17)" rx="2" ry="2" />
+<text  x="758.18" y="159.5" ></text>
+</g>
+<g >
+<title>std::basic_ios&lt;wchar_t, std::char_traits&lt;wchar_t&gt; &gt;::init (200,040 samples, 0.13%)</title><rect x="10.0" y="117" width="1.6" height="15.0" fill="rgb(243,175,41)" rx="2" ry="2" />
+<text  x="13.00" y="127.5" ></text>
+</g>
+<g >
+<title>[libstdc++.so.6.0.33] (200,040 samples, 0.13%)</title><rect x="10.0" y="149" width="1.6" height="15.0" fill="rgb(216,51,12)" rx="2" ry="2" />
+<text  x="13.00" y="159.5" ></text>
+</g>
+<g >
+<title>jev_bench (149,829,960 samples, 100.00%)</title><rect x="10.0" y="213" width="1180.0" height="15.0" fill="rgb(242,174,41)" rx="2" ry="2" />
+<text  x="13.00" y="223.5" >jev_bench</text>
+</g>
+<g >
+<title>malloc (400,080 samples, 0.27%)</title><rect x="696.9" y="117" width="3.1" height="15.0" fill="rgb(230,119,28)" rx="2" ry="2" />
+<text  x="699.89" y="127.5" ></text>
+</g>
+<g >
+<title>std::chrono::_V2::steady_clock::now (200,040 samples, 0.13%)</title><rect x="180.1" y="101" width="1.6" height="15.0" fill="rgb(249,203,48)" rx="2" ry="2" />
+<text  x="183.15" y="111.5" ></text>
+</g>
+<g >
+<title>_dl_sysdep_start (400,080 samples, 0.27%)</title><rect x="11.6" y="165" width="3.1" height="15.0" fill="rgb(234,137,32)" rx="2" ry="2" />
+<text  x="14.58" y="175.5" ></text>
+</g>
+<g >
+<title>cfree@GLIBC_2.2.5 (200,040 samples, 0.13%)</title><rect x="695.3" y="133" width="1.6" height="15.0" fill="rgb(233,131,31)" rx="2" ry="2" />
+<text  x="698.31" y="143.5" ></text>
+</g>
+<g >
+<title>Common::AsyncLogger::registerProducer (1,800,360 samples, 1.20%)</title><rect x="191.2" y="117" width="14.2" height="15.0" fill="rgb(242,174,41)" rx="2" ry="2" />
+<text  x="194.17" y="127.5" ></text>
+</g>
+<g >
+<title>Common::AsyncLogger::stop (200,040 samples, 0.13%)</title><rect x="107.7" y="133" width="1.6" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="110.68" y="143.5" ></text>
+</g>
+<g >
+<title>Trading::OrderManager::newOrder (1,200,240 samples, 0.80%)</title><rect x="306.2" y="69" width="9.4" height="15.0" fill="rgb(248,200,47)" rx="2" ry="2" />
+<text  x="309.18" y="79.5" ></text>
+</g>
+<g >
+<title>Trading::TradeEngine::sendClientRequest (1,000,200 samples, 0.67%)</title><rect x="307.8" y="53" width="7.8" height="15.0" fill="rgb(206,5,1)" rx="2" ry="2" />
+<text  x="310.76" y="63.5" ></text>
+</g>
+<g >
+<title>clock_gettime@@GLIBC_2.17 (2,000,400 samples, 1.34%)</title><rect x="455.8" y="85" width="15.8" height="15.0" fill="rgb(250,209,50)" rx="2" ry="2" />
+<text  x="458.85" y="95.5" ></text>
+</g>
+<g >
+<title>std::chrono::_V2::system_clock::now (800,160 samples, 0.53%)</title><rect x="488.9" y="85" width="6.3" height="15.0" fill="rgb(224,91,21)" rx="2" ry="2" />
+<text  x="491.93" y="95.5" ></text>
+</g>
+<g >
+<title>_dl_fixup (200,040 samples, 0.13%)</title><rect x="203.8" y="85" width="1.6" height="15.0" fill="rgb(250,210,50)" rx="2" ry="2" />
+<text  x="206.78" y="95.5" ></text>
+</g>
+<g >
+<title>std::chrono::_V2::steady_clock::now (1,000,200 samples, 0.67%)</title><rect x="172.3" y="85" width="7.8" height="15.0" fill="rgb(249,203,48)" rx="2" ry="2" />
+<text  x="175.27" y="95.5" ></text>
+</g>
+<g >
+<title>std::basic_filebuf&lt;char, std::char_traits&lt;char&gt; &gt;::close (200,040 samples, 0.13%)</title><rect x="107.7" y="117" width="1.6" height="15.0" fill="rgb(226,99,23)" rx="2" ry="2" />
+<text  x="110.68" y="127.5" ></text>
+</g>
+<g >
+<title>void Common::AsyncLogger::ProducerHandle::logFixed&lt;Trading::TradeEngine::recordLatency (4,000,800 samples, 2.67%)</title><rect x="353.4" y="85" width="31.6" height="15.0" fill="rgb(225,96,23)" rx="2" ry="2" />
+<text  x="356.44" y="95.5" >vo..</text>
+</g>
+<g >
+<title>Trading::JevWorker::processPending (7,001,400 samples, 4.67%)</title><rect x="109.3" y="133" width="55.1" height="15.0" fill="rgb(235,141,33)" rx="2" ry="2" />
+<text  x="112.25" y="143.5" >Tradi..</text>
+</g>
+<g >
+<title>std::basic_filebuf&lt;char, std::char_traits&lt;char&gt; &gt;::underflow (400,080 samples, 0.27%)</title><rect x="711.1" y="117" width="3.1" height="15.0" fill="rgb(232,127,30)" rx="2" ry="2" />
+<text  x="714.07" y="127.5" ></text>
+</g>
+<g >
+<title>std::ostreambuf_iterator&lt;char, std::char_traits&lt;char&gt; &gt; std::num_put&lt;char, std::ostreambuf_iterator&lt;char, std::char_traits&lt;char&gt; &gt; &gt;::_M_insert_int&lt;long&gt; (2,400,480 samples, 1.60%)</title><rect x="1163.2" y="117" width="18.9" height="15.0" fill="rgb(211,28,6)" rx="2" ry="2" />
+<text  x="1166.22" y="127.5" ></text>
+</g>
+<g >
+<title>clock_gettime@@GLIBC_2.17 (1,200,240 samples, 0.80%)</title><rect x="389.7" y="85" width="9.4" height="15.0" fill="rgb(250,209,50)" rx="2" ry="2" />
+<text  x="392.68" y="95.5" ></text>
+</g>
+<g >
+<title>strlen (200,040 samples, 0.13%)</title><rect x="14.7" y="165" width="1.6" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="17.73" y="175.5" ></text>
+</g>
+<g >
+<title>__memmove_avx512_unaligned_erms (200,040 samples, 0.13%)</title><rect x="66.7" y="149" width="1.6" height="15.0" fill="rgb(223,84,20)" rx="2" ry="2" />
+<text  x="69.72" y="159.5" ></text>
+</g>
+<g >
+<title>_dl_init (200,040 samples, 0.13%)</title><rect x="10.0" y="181" width="1.6" height="15.0" fill="rgb(225,96,23)" rx="2" ry="2" />
+<text  x="13.00" y="191.5" ></text>
+</g>
+<g >
+<title>clock_gettime@@GLIBC_2.17 (800,160 samples, 0.53%)</title><rect x="488.9" y="69" width="6.3" height="15.0" fill="rgb(250,209,50)" rx="2" ry="2" />
+<text  x="491.93" y="79.5" ></text>
+</g>
+<g >
+<title>do_lookup_x (400,080 samples, 0.27%)</title><rect x="11.6" y="101" width="3.1" height="15.0" fill="rgb(245,187,44)" rx="2" ry="2" />
+<text  x="14.58" y="111.5" ></text>
+</g>
+<g >
+<title>Trading::OrderManager::onOrderUpdate (200,040 samples, 0.13%)</title><rect x="246.3" y="101" width="1.6" height="15.0" fill="rgb(205,2,0)" rx="2" ry="2" />
+<text  x="249.32" y="111.5" ></text>
+</g>
+<g >
+<title>Trading::OrderGateway::publishClientResponse (2,000,400 samples, 1.34%)</title><rect x="164.4" y="101" width="15.7" height="15.0" fill="rgb(217,57,13)" rx="2" ry="2" />
+<text  x="167.39" y="111.5" ></text>
+</g>
+<g >
+<title>operator delete[] (200,040 samples, 0.13%)</title><rect x="107.7" y="101" width="1.6" height="15.0" fill="rgb(208,18,4)" rx="2" ry="2" />
+<text  x="110.68" y="111.5" ></text>
+</g>
+<g >
+<title>std::chrono::_V2::system_clock::now (1,400,280 samples, 0.93%)</title><rect x="419.6" y="85" width="11.0" height="15.0" fill="rgb(224,91,21)" rx="2" ry="2" />
+<text  x="422.61" y="95.5" ></text>
+</g>
+<g >
+<title>Trading::TradeEngine::processMarketUpdates (8,201,640 samples, 5.47%)</title><rect x="430.6" y="117" width="64.6" height="15.0" fill="rgb(243,178,42)" rx="2" ry="2" />
+<text  x="433.64" y="127.5" >Trading..</text>
+</g>
+<g >
+<title>__libc_start_main@@GLIBC_2.34 (94,618,920 samples, 63.15%)</title><rect x="16.3" y="181" width="745.2" height="15.0" fill="rgb(229,113,27)" rx="2" ry="2" />
+<text  x="19.30" y="191.5" >__libc_start_main@@GLIBC_2.34</text>
+</g>
+<g >
+<title>std::__cxx11::basic_string&lt;char, std::char_traits&lt;char&gt;, std::allocator&lt;char&gt; &gt;::_M_append (200,040 samples, 0.13%)</title><rect x="709.5" y="117" width="1.6" height="15.0" fill="rgb(222,79,19)" rx="2" ry="2" />
+<text  x="712.49" y="127.5" ></text>
+</g>
+<g >
+<title>std::_Function_handler&lt;void  (200,040 samples, 0.13%)</title><rect x="700.0" y="133" width="1.6" height="15.0" fill="rgb(245,187,44)" rx="2" ry="2" />
+<text  x="703.04" y="143.5" ></text>
+</g>
+<g >
+<title>std::basic_streambuf&lt;char, std::char_traits&lt;char&gt; &gt;::xsputn (800,160 samples, 0.53%)</title><rect x="1078.1" y="117" width="6.3" height="15.0" fill="rgb(244,181,43)" rx="2" ry="2" />
+<text  x="1081.14" y="127.5" ></text>
+</g>
+<g >
+<title>all (149,829,960 samples, 100%)</title><rect x="10.0" y="229" width="1180.0" height="15.0" fill="rgb(213,39,9)" rx="2" ry="2" />
+<text  x="13.00" y="239.5" ></text>
+</g>
+<g >
+<title>_int_free (200,040 samples, 0.13%)</title><rect x="693.7" y="133" width="1.6" height="15.0" fill="rgb(247,196,46)" rx="2" ry="2" />
+<text  x="696.74" y="143.5" ></text>
+</g>
+<g >
+<title>Trading::TradeEngine::scheduleJevEvaluation (18,203,640 samples, 12.15%)</title><rect x="495.2" y="117" width="143.4" height="15.0" fill="rgb(220,71,17)" rx="2" ry="2" />
+<text  x="498.23" y="127.5" >Trading::TradeEngi..</text>
+</g>
+<g >
+<title>__strlen_evex (2,800,560 samples, 1.87%)</title><rect x="761.5" y="149" width="22.0" height="15.0" fill="rgb(240,164,39)" rx="2" ry="2" />
+<text  x="764.48" y="159.5" >_..</text>
+</g>
+<g >
+<title>std::ios_base::_M_init (200,040 samples, 0.13%)</title><rect x="10.0" y="101" width="1.6" height="15.0" fill="rgb(228,107,25)" rx="2" ry="2" />
+<text  x="13.00" y="111.5" ></text>
+</g>
+<g >
+<title>memcpy@plt (200,040 samples, 0.13%)</title><rect x="1179.0" y="101" width="1.5" height="15.0" fill="rgb(224,88,21)" rx="2" ry="2" />
+<text  x="1181.97" y="111.5" ></text>
+</g>
+<g >
+<title>void std::__introsort_loop&lt;__gnu_cxx::__normal_iterator&lt;unsigned long*, std::vector&lt;unsigned long, std::allocator&lt;unsigned long&gt; &gt; &gt;, long, __gnu_cxx::__ops::_Iter_less_iter&gt; (600,120 samples, 0.40%)</title><rect x="750.5" y="85" width="4.7" height="15.0" fill="rgb(205,0,0)" rx="2" ry="2" />
+<text  x="753.45" y="95.5" ></text>
+</g>
+<g >
+<title>std::chrono::_V2::steady_clock::now (8,001,600 samples, 5.34%)</title><rect x="575.6" y="101" width="63.0" height="15.0" fill="rgb(249,203,48)" rx="2" ry="2" />
+<text  x="578.58" y="111.5" >std::c..</text>
+</g>
+<g >
+<title>read (200,040 samples, 0.13%)</title><rect x="712.6" y="85" width="1.6" height="15.0" fill="rgb(252,216,51)" rx="2" ry="2" />
+<text  x="715.64" y="95.5" ></text>
+</g>
+<g >
+<title>std::chrono::_V2::system_clock::now (1,000,200 samples, 0.67%)</title><rect x="377.1" y="69" width="7.9" height="15.0" fill="rgb(224,91,21)" rx="2" ry="2" />
+<text  x="380.08" y="79.5" ></text>
+</g>
+</g>
+</svg>
