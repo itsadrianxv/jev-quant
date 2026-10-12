@@ -9,6 +9,7 @@
 #include "exchange/market_data/market_update.h"
 #include "exchange/order_server/client_request.h"
 #include "exchange/order_server/client_response.h"
+#include "harness.h"
 #include "../simulated_venue.h"
 #include "../failing_jev_provider.h"
 #include "trading/market_data/market_data_consumer.h"
@@ -28,83 +29,16 @@ using Trading::JevIntent;
 using Trading::JevWorker;
 using Trading::MockJevDecisionProvider;
 using Trading::OMOrderState;
+using Tests::EngineHarness;
 using Tests::FailingJevProvider;
 using Tests::SimulatedVenue;
-
-constexpr auto kLongInterval = std::chrono::hours(1);
-
-struct EngineHarness {
-    Exchange::ClientRequestLFQueue requests;
-    Exchange::ClientResponseLFQueue responses;
-    Exchange::MarketUpdateLFQueue market_updates;
-    Trading::JevDecisionLFQueue decisions;
-    Trading::TradeEngine engine;
-
-    explicit EngineHarness(Trading::RiskLimits limits, Common::ClientId client_id = 7)
-            : requests(32), responses(32), market_updates(32), decisions(32),
-              engine(client_id, limits, &requests, &responses, &market_updates, &decisions) {}
-
-    static auto defaultLimits() -> Trading::RiskLimits {
-        return {10, 10, 0.0};
-    }
-};
-
-auto makeHarness(Trading::RiskLimits limits) -> std::unique_ptr<EngineHarness> {
-    return std::make_unique<EngineHarness>(limits);
-}
-
-auto writeMarketUpdate(Exchange::MarketUpdateLFQueue& queue, Common::TickerId ticker,
-                       Common::Price bid, Common::Price ask) -> void {
-    auto* update = queue.getNextToWriteTo();
-    update->type_ = Exchange::MarketUpdateType::DEPTH_SNAPSHOT;
-    update->ticker_id_ = ticker;
-    update->depth_snapshot_.bids_[0] = {bid, 2};
-    update->depth_snapshot_.asks_[0] = {ask, 6};
-    queue.updateWriteIndex();
-}
-
-auto writeDecision(Trading::JevDecisionLFQueue& queue, std::uint64_t evaluation_id,
-                   JevBias bias = JevBias::LONG, JevIntent intent = JevIntent::OPEN)
-        -> void {
-    auto* decision = queue.getNextToWriteTo();
-    decision->evaluation_id_ = evaluation_id;
-    decision->ticker_id_ = 0;
-    decision->bias_ = bias;
-    decision->intent_ = intent;
-    queue.updateWriteIndex();
-}
-
-auto writeEvaluation(Trading::JevEvaluationStateLFQueue& queue, std::uint64_t evaluation_id)
-        -> JevEvaluationState& {
-    auto* state = queue.getNextToWriteTo();
-    state->evaluation_id_ = evaluation_id;
-    state->ticker_id_ = 0;
-    return *state;
-}
-
-auto readRequest(Exchange::ClientRequestLFQueue& queue) -> Exchange::ClientRequest {
-    const auto* request = queue.getNextToRead();
-    EXPECT_NE(request, nullptr);
-    const auto value = *request;
-    queue.updateReadIndex();
-    return value;
-}
-
-auto writeFill(Exchange::ClientResponseLFQueue& queue, Common::ClientId client_id,
-               Common::OrderId client_order_id, Common::Side side, Common::Price price,
-               Common::Qty qty) -> void {
-    auto* response = queue.getNextToWriteTo();
-    response->type_ = Exchange::ClientResponseType::FILLED;
-    response->client_id_ = client_id;
-    response->ticker_id_ = 0;
-    response->client_order_id_ = client_order_id;
-    response->side_ = side;
-    response->price_ = price;
-    response->exec_qty_ = qty;
-    response->leaves_qty_ = 0;
-    response->offset_ = Common::OrderOffset::OPEN;
-    queue.updateWriteIndex();
-}
+using Tests::kLongInterval;
+using Tests::makeHarness;
+using Tests::readRequest;
+using Tests::writeDecision;
+using Tests::writeEvaluation;
+using Tests::writeFill;
+using Tests::writeMarketUpdate;
 
 TEST(TradeEngineDispatchTest, DrainsResponsesThenMarketUpdatesThenDecisions) {
     auto harness = makeHarness({10, 100, 0.0});
