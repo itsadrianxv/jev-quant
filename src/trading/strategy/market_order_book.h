@@ -138,7 +138,11 @@ class MarketOrderBook final {
             throw std::logic_error(
                     "MarketOrderBook cannot mix incremental and depth snapshot updates");
         }
-        clearIncrementalBook();
+        // A depth-only book has no pooled incremental state to release. Avoid
+        // clearing the large open-addressed slot arrays on every snapshot.
+        if (mode_ == BookMode::UNINITIALIZED) {
+            bbo_ = BBO{};
+        }
         depth_snapshot_ = snapshot;
         mode_ = BookMode::DEPTH_SNAPSHOT;
         updateBBOFromDepthSnapshot();

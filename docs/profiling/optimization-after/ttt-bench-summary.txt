@@ -1,0 +1,6 @@
+segment	count	mean_ns	p50_ns	p90_ns	p99_ns	max_ns
+ttt_decision_consumed	59564	34.23	30	40	90	16022
+ttt_decision_to_order	59563	133.57	40	50	140	4059464
+ttt_market_data_consumed	59559	103.26	30	31	150	4069676
+ttt_order_round_trip	59559	30.77	30	31	110	25932
+updates=100000 wall_ms=169.22 ttt_log=/tmp/tmp.8YoK4YGwSX/run-ttt/ttt-1.log

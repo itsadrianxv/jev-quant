@@ -11,7 +11,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 BENCH="${BENCH:-build/Release-profile/jev_bench}"
-OUT="docs/profiling/baseline"
+OUT="${OUT:-docs/profiling/baseline}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
