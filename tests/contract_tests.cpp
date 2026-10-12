@@ -2,10 +2,13 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <functional>
 #include <iostream>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <filesystem>
 #include <fstream>
 
@@ -428,6 +431,371 @@ void testMarketOrderBookContract() {
     add.type_ = Exchange::MarketUpdateType::CANCEL;
     incremental_book.onMarketUpdate(add);
     CHECK(incremental_book.getBBO()->bid_price_ == Common::Price_INVALID);
+}
+
+void testIncrementalBookOrderFlows() {
+    Trading::MarketOrderBook book(0);
+    Exchange::MarketUpdate update;
+
+    const auto add = [&](Common::OrderId order_id, Common::Side side,
+                         Common::Price price, Common::Qty qty) {
+        update.type_ = Exchange::MarketUpdateType::ADD;
+        update.order_id_ = order_id;
+        update.side_ = side;
+        update.price_ = price;
+        update.qty_ = qty;
+        book.onMarketUpdate(update);
+    };
+    const auto modify = [&](Common::OrderId order_id, Common::Side side,
+                            Common::Price price, Common::Qty qty) {
+        update.type_ = Exchange::MarketUpdateType::MODIFY;
+        update.order_id_ = order_id;
+        update.side_ = side;
+        update.price_ = price;
+        update.qty_ = qty;
+        book.onMarketUpdate(update);
+    };
+    const auto cancel = [&](Common::OrderId order_id) {
+        update.type_ = Exchange::MarketUpdateType::CANCEL;
+        update.order_id_ = order_id;
+        book.onMarketUpdate(update);
+    };
+    const auto expect_bbo = [&](Common::Price bid_price, Common::Qty bid_qty,
+                                Common::Price ask_price, Common::Qty ask_qty) {
+        CHECK(book.getBBO()->bid_price_ == bid_price);
+        CHECK(book.getBBO()->bid_qty_ == bid_qty);
+        CHECK(book.getBBO()->ask_price_ == ask_price);
+        CHECK(book.getBBO()->ask_qty_ == ask_qty);
+    };
+
+    add(1, Common::Side::BUY, 100, 2);
+    add(2, Common::Side::BUY, 100, 3);
+    add(3, Common::Side::BUY, 99, 1);
+    add(4, Common::Side::SELL, 102, 4);
+    add(5, Common::Side::SELL, 103, 1);
+    expect_bbo(100, 5, 102, 4);
+
+    // MODIFY within a level adjusts the aggregated quantity.
+    modify(2, Common::Side::BUY, 100, 6);
+    expect_bbo(100, 8, 102, 4);
+
+    // MODIFY across prices moves the resting quantity and empties the old level.
+    modify(3, Common::Side::BUY, 100, 1);
+    expect_bbo(100, 9, 102, 4);
+
+    // MODIFY across prices on the ask side moves the best ask.
+    modify(5, Common::Side::SELL, 101, 1);
+    expect_bbo(100, 9, 101, 1);
+
+    // CANCEL removes quantities; the level disappears when it drains.
+    cancel(1);
+    expect_bbo(100, 7, 101, 1);
+    cancel(2);
+    expect_bbo(100, 1, 101, 1);
+    cancel(3);
+    expect_bbo(Common::Price_INVALID, Common::Qty_INVALID, 101, 1);
+
+    // Re-ADD with a live order id replaces the resting order.
+    add(4, Common::Side::SELL, 104, 2);
+    expect_bbo(Common::Price_INVALID, Common::Qty_INVALID, 101, 1);
+
+    // MODIFY and CANCEL of unknown order ids are no-ops.
+    modify(77, Common::Side::SELL, 99, 5);
+    expect_bbo(Common::Price_INVALID, Common::Qty_INVALID, 101, 1);
+    cancel(77);
+    expect_bbo(Common::Price_INVALID, Common::Qty_INVALID, 101, 1);
+
+    // SNAPSHOT_START/SNAPSHOT_END leave an incremental book untouched.
+    update.type_ = Exchange::MarketUpdateType::SNAPSHOT_START;
+    book.onMarketUpdate(update);
+    update.type_ = Exchange::MarketUpdateType::SNAPSHOT_END;
+    book.onMarketUpdate(update);
+    expect_bbo(Common::Price_INVALID, Common::Qty_INVALID, 101, 1);
+
+    // Mode-mixing rejection is unchanged for direct snapshot installs.
+    bool threw = false;
+    try {
+        book.onDepthSnapshot(Exchange::DepthSnapshot{});
+    } catch (const std::logic_error&) {
+        threw = true;
+    }
+    CHECK(threw);
+
+    // CLEAR empties the book and the pools fully reuse afterwards.
+    update.type_ = Exchange::MarketUpdateType::CLEAR;
+    book.onMarketUpdate(update);
+    expect_bbo(Common::Price_INVALID, Common::Qty_INVALID, Common::Price_INVALID,
+               Common::Qty_INVALID);
+
+    add(1, Common::Side::BUY, 100, 2);
+    add(2, Common::Side::BUY, 100, 3);
+    add(3, Common::Side::BUY, 99, 1);
+    add(4, Common::Side::SELL, 102, 4);
+    add(5, Common::Side::SELL, 103, 1);
+    expect_bbo(100, 5, 102, 4);
+
+    // TRADE updates are consumed without changing the book.
+    update.type_ = Exchange::MarketUpdateType::TRADE;
+    update.order_id_ = 9;
+    book.onMarketUpdate(update);
+    expect_bbo(100, 5, 102, 4);
+}
+
+void testIncrementalBookMatchesReferenceModel() {
+    // Mirror of the pre-pooled ordered-map book behavior, compared op by op.
+    struct ModelOrder {
+        Common::Side side_ = Common::Side::INVALID;
+        Common::Price price_ = Common::Price_INVALID;
+        Common::Qty qty_ = 0;
+    };
+    std::unordered_map<Common::OrderId, ModelOrder> orders;
+    std::map<Common::Price, Common::Qty, std::greater<Common::Price>> bids;
+    std::map<Common::Price, Common::Qty> asks;
+
+    const auto add_level = [&](Common::Side side, Common::Price price,
+                               Common::Qty qty) {
+        if (side == Common::Side::BUY) {
+            bids[price] += qty;
+        } else {
+            asks[price] += qty;
+        }
+    };
+    const auto remove_level = [&](Common::Side side, Common::Price price,
+                                  Common::Qty qty) {
+        if (side == Common::Side::BUY) {
+            const auto level = bids.find(price);
+            if (level == bids.end()) {
+                return;
+            }
+            if (level->second <= qty) {
+                bids.erase(level);
+            } else {
+                level->second -= qty;
+            }
+        } else {
+            const auto level = asks.find(price);
+            if (level == asks.end()) {
+                return;
+            }
+            if (level->second <= qty) {
+                asks.erase(level);
+            } else {
+                level->second -= qty;
+            }
+        }
+    };
+    const auto cancel_order = [&](Common::OrderId order_id) {
+        const auto order = orders.find(order_id);
+        if (order == orders.end()) {
+            return;
+        }
+        remove_level(order->second.side_, order->second.price_, order->second.qty_);
+        orders.erase(order);
+    };
+
+    Trading::MarketOrderBook book(0);
+    Exchange::MarketUpdate update;
+
+    const auto apply = [&](Exchange::MarketUpdateType type,
+                           Common::OrderId order_id, Common::Side side,
+                           Common::Price price, Common::Qty qty) {
+        update.type_ = type;
+        update.order_id_ = order_id;
+        update.side_ = side;
+        update.price_ = price;
+        update.qty_ = qty;
+
+        switch (type) {
+            case Exchange::MarketUpdateType::ADD:
+                cancel_order(order_id);
+                orders[order_id] = {side, price, qty};
+                add_level(side, price, qty);
+                break;
+            case Exchange::MarketUpdateType::MODIFY: {
+                const auto order = orders.find(order_id);
+                if (order == orders.end()) {
+                    break;
+                }
+                auto& resting = order->second;
+                if (resting.side_ != side || resting.price_ != price) {
+                    remove_level(resting.side_, resting.price_, resting.qty_);
+                    resting.side_ = side;
+                    resting.price_ = price;
+                    add_level(resting.side_, resting.price_, qty);
+                } else if (qty >= resting.qty_) {
+                    add_level(resting.side_, resting.price_, qty - resting.qty_);
+                } else {
+                    remove_level(resting.side_, resting.price_, resting.qty_ - qty);
+                }
+                resting.qty_ = qty;
+                break;
+            }
+            case Exchange::MarketUpdateType::CANCEL:
+                cancel_order(order_id);
+                break;
+            case Exchange::MarketUpdateType::CLEAR:
+                orders.clear();
+                bids.clear();
+                asks.clear();
+                break;
+            default:
+                break;
+        }
+
+        book.onMarketUpdate(update);
+
+        const auto* bbo = book.getBBO();
+        const auto bid = bids.begin();
+        const auto ask = asks.begin();
+        CHECK(bbo->bid_price_ ==
+              (bid == bids.end() ? Common::Price_INVALID : bid->first));
+        CHECK(bbo->bid_qty_ ==
+              (bid == bids.end() ? Common::Qty_INVALID : bid->second));
+        CHECK(bbo->ask_price_ ==
+              (ask == asks.end() ? Common::Price_INVALID : ask->first));
+        CHECK(bbo->ask_qty_ ==
+              (ask == asks.end() ? Common::Qty_INVALID : ask->second));
+    };
+
+    std::uint64_t state = 0x9E3779B97F4A7C15ull;
+    const auto next = [&state]() {
+        state = state * 6364136223846793005ull + 1442695040888963407ull;
+        return state >> 33;
+    };
+    for (int i = 0; i < 20000; ++i) {
+        const auto roll = next() % 100;
+        const auto order_id = static_cast<Common::OrderId>(next() % 64);
+        const auto side =
+                (next() % 2) == 0 ? Common::Side::BUY : Common::Side::SELL;
+        const auto price = static_cast<Common::Price>(90 + next() % 20);
+        const auto qty = static_cast<Common::Qty>(1 + next() % 5);
+        if (roll < 3) {
+            apply(Exchange::MarketUpdateType::TRADE, order_id, side, price, qty);
+        } else if (roll < 48) {
+            apply(Exchange::MarketUpdateType::ADD, order_id, side, price, qty);
+        } else if (roll < 78) {
+            apply(Exchange::MarketUpdateType::MODIFY, order_id, side, price, qty);
+        } else if (roll < 96) {
+            apply(Exchange::MarketUpdateType::CANCEL, order_id, side, price, qty);
+        } else {
+            apply(Exchange::MarketUpdateType::CLEAR, 0, Common::Side::INVALID, 0, 0);
+        }
+    }
+}
+
+void testIncrementalBookSlotExhaustionFailsFast() {
+    Exchange::MarketUpdate add;
+    add.type_ = Exchange::MarketUpdateType::ADD;
+    add.qty_ = 1;
+
+    // Order slots exhaust at the load-factor ceiling and fail fast.
+    {
+        Trading::MarketOrderBook book(0);
+        add.side_ = Common::Side::BUY;
+        add.price_ = 100;
+        bool exhausted = false;
+        for (Common::OrderId order_id = 1;
+             order_id <= Trading::kMaxLiveOrderEntries + 1; ++order_id) {
+            add.order_id_ = order_id;
+            try {
+                book.onMarketUpdate(add);
+            } catch (const std::runtime_error&) {
+                CHECK(order_id == Trading::kMaxLiveOrderEntries + 1);
+                exhausted = true;
+                break;
+            }
+        }
+        CHECK(exhausted);
+        CHECK(book.getBBO()->bid_qty_ == Trading::kMaxLiveOrderEntries);
+
+        // CLEAR frees every slot and the same capacity is available again.
+        Exchange::MarketUpdate clear;
+        clear.type_ = Exchange::MarketUpdateType::CLEAR;
+        book.onMarketUpdate(clear);
+        CHECK(book.getBBO()->bid_price_ == Common::Price_INVALID);
+        add.order_id_ = 1;
+        book.onMarketUpdate(add);
+        CHECK(book.getBBO()->bid_price_ == 100);
+        CHECK(book.getBBO()->bid_qty_ == 1);
+    }
+
+    // Level slots exhaust per side.
+    {
+        Trading::MarketOrderBook book(0);
+        add.side_ = Common::Side::BUY;
+        bool exhausted = false;
+        for (Common::Price price = 1;
+             price <= static_cast<Common::Price>(Trading::kMaxLiveLevelEntriesPerSide) + 1;
+             ++price) {
+            add.order_id_ = static_cast<Common::OrderId>(price);
+            add.price_ = price;
+            try {
+                book.onMarketUpdate(add);
+            } catch (const std::runtime_error&) {
+                CHECK(price ==
+                      static_cast<Common::Price>(Trading::kMaxLiveLevelEntriesPerSide) + 1);
+                exhausted = true;
+                break;
+            }
+        }
+        CHECK(exhausted);
+        CHECK(book.getBBO()->bid_price_ ==
+              static_cast<Common::Price>(Trading::kMaxLiveLevelEntriesPerSide));
+        CHECK(book.getBBO()->bid_qty_ == 1);
+
+        // The opposite side is unaffected by the exhausted bid side.
+        add.side_ = Common::Side::SELL;
+        add.order_id_ = 1000000;
+        add.price_ = 1000000;
+        book.onMarketUpdate(add);
+        CHECK(book.getBBO()->ask_price_ == 1000000);
+
+        // The failed ADD left the book consistent: freeing one bid level makes
+        // room for a new price.
+        Exchange::MarketUpdate cancel;
+        cancel.type_ = Exchange::MarketUpdateType::CANCEL;
+        cancel.order_id_ = 1;
+        book.onMarketUpdate(cancel);
+        add.side_ = Common::Side::BUY;
+        add.order_id_ = 2000000;
+        add.price_ = 2000000;
+        book.onMarketUpdate(add);
+        CHECK(book.getBBO()->bid_price_ == 2000000);
+    }
+
+    // A MODIFY that would create one more level fails fast without moving the
+    // resting order.
+    {
+        Trading::MarketOrderBook book(0);
+        add.type_ = Exchange::MarketUpdateType::ADD;
+        add.side_ = Common::Side::BUY;
+        for (Common::Price price = 1;
+             price <= static_cast<Common::Price>(Trading::kMaxLiveLevelEntriesPerSide);
+             ++price) {
+            add.order_id_ = static_cast<Common::OrderId>(price);
+            add.price_ = price;
+            book.onMarketUpdate(add);
+        }
+        Exchange::MarketUpdate modify;
+        modify.type_ = Exchange::MarketUpdateType::MODIFY;
+        modify.order_id_ = 1;
+        modify.side_ = Common::Side::BUY;
+        modify.price_ = 9000000;
+        modify.qty_ = 1;
+        bool threw = false;
+        try {
+            book.onMarketUpdate(modify);
+        } catch (const std::runtime_error&) {
+            threw = true;
+        }
+        CHECK(threw);
+        Exchange::MarketUpdate cancel;
+        cancel.type_ = Exchange::MarketUpdateType::CANCEL;
+        cancel.order_id_ = 1;
+        book.onMarketUpdate(cancel);
+        CHECK(book.getBBO()->bid_price_ ==
+              static_cast<Common::Price>(Trading::kMaxLiveLevelEntriesPerSide));
+    }
 }
 
 void testJevDecisionContract() {
@@ -1154,6 +1522,9 @@ int main() {
     testQueueSpscConcurrency();
     testMessageContract();
     testMarketOrderBookContract();
+    testIncrementalBookOrderFlows();
+    testIncrementalBookMatchesReferenceModel();
+    testIncrementalBookSlotExhaustionFailsFast();
     testJevDecisionContract();
     testTradeEngineDispatchOrder();
     testBookModeProtection();
