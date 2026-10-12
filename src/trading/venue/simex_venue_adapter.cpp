@@ -5,6 +5,7 @@
 #include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <cstring>
@@ -102,6 +103,54 @@ struct SimexVenueAdapter::Impl {
     std::map<std::uint64_t, simex::exchange::MarketUpdate> pending;
     Common::Price last_trade = Common::Price_INVALID;
     std::int64_t net_position = 0;
+
+    // Per-datagram depth aggregation storage. The level bound is the
+    // compile-time snapshot depth, so this is deliberately not a MemPool
+    // site: there is no runtime capacity to pool against.
+    struct LevelAggregate {
+        Common::Price price = 0;
+        std::uint64_t qty = 0;
+    };
+    std::array<LevelAggregate, Common::DEPTH_SNAPSHOT_LEVELS> bid_levels{};
+    std::array<LevelAggregate, Common::DEPTH_SNAPSHOT_LEVELS> ask_levels{};
+    std::size_t bid_level_count = 0, ask_level_count = 0;
+
+    // Accumulate one resting order into the sorted per-side top levels. Bids
+    // keep the highest prices (descending), asks the lowest (ascending). When
+    // the array is full a strictly better price evicts the worst retained
+    // level; a worse price is skipped. A level can only leave through
+    // eviction by five strictly better prices, so an evicted price can never
+    // re-enter the published top levels and its later contributions stay
+    // irrelevant. Aggregation therefore matches the previous ordered-map
+    // behavior exactly.
+    static void aggregate(std::array<LevelAggregate, Common::DEPTH_SNAPSHOT_LEVELS>& levels,
+                          std::size_t& count, bool descending,
+                          Common::Price price, std::uint64_t qty) {
+        const auto end = levels.begin() + static_cast<std::ptrdiff_t>(count);
+        const auto found = descending
+                ? std::lower_bound(levels.begin(), end, price,
+                                   [](const LevelAggregate& level, Common::Price value) {
+                                       return level.price > value;
+                                   })
+                : std::lower_bound(levels.begin(), end, price,
+                                   [](const LevelAggregate& level, Common::Price value) {
+                                       return level.price < value;
+                                   });
+        const auto index = static_cast<std::size_t>(found - levels.begin());
+        if (index < count && found->price == price) {
+            found->qty += qty;
+            return;
+        }
+        if (count < levels.size()) {
+            for (std::size_t shift = count; shift > index; --shift) levels[shift] = levels[shift - 1];
+            levels[index] = {price, qty};
+            ++count;
+            return;
+        }
+        if (index == levels.size()) return;
+        for (std::size_t shift = levels.size() - 1; shift > index; --shift) levels[shift] = levels[shift - 1];
+        levels[index] = {price, qty};
+    }
 
     Impl(MarketDataConsumer* md, OrderGateway* og, SimexVenueConfig cfg)
         : market(md), gateway(og), config(std::move(cfg)) {
@@ -313,26 +362,28 @@ struct SimexVenueAdapter::Impl {
     }
 
     void publishBook() {
-        std::map<Common::Price, std::uint64_t, std::greater<>> bids;
-        std::map<Common::Price, std::uint64_t> asks;
+        bid_level_count = 0;
+        ask_level_count = 0;
         for (const auto& [id, order] : book) {
             (void)id;
-            if (order.side == Venue::Side::BUY) bids[order.price_ticks] += order.qty;
-            else asks[order.price_ticks] += order.qty;
+            if (order.side == Venue::Side::BUY)
+                aggregate(bid_levels, bid_level_count, true, order.price_ticks, order.qty);
+            else
+                aggregate(ask_levels, ask_level_count, false, order.price_ticks, order.qty);
         }
         Exchange::MarketUpdate update;
         update.type_ = Exchange::MarketUpdateType::DEPTH_SNAPSHOT;
         update.ticker_id_ = config.ticker_id;
-        auto copy = [](const auto& levels, auto& output) {
-            std::size_t index = 0;
-            for (const auto& [price, qty] : levels) {
-                if (qty >= Common::Qty_INVALID) throw std::runtime_error("Simex aggregate quantity overflow");
-                output[index++] = {price, static_cast<Common::Qty>(qty)};
-                if (index == output.size()) break;
+        auto copy = [](const std::array<LevelAggregate, Common::DEPTH_SNAPSHOT_LEVELS>& levels,
+                       std::size_t count,
+                       std::array<Exchange::PriceLevel, Common::DEPTH_SNAPSHOT_LEVELS>& output) {
+            for (std::size_t index = 0; index < count; ++index) {
+                if (levels[index].qty >= Common::Qty_INVALID) throw std::runtime_error("Simex aggregate quantity overflow");
+                output[index] = {levels[index].price, static_cast<Common::Qty>(levels[index].qty)};
             }
         };
-        copy(bids, update.depth_snapshot_.bids_);
-        copy(asks, update.depth_snapshot_.asks_);
+        copy(bid_levels, bid_level_count, update.depth_snapshot_.bids_);
+        copy(ask_levels, ask_level_count, update.depth_snapshot_.asks_);
         update.depth_snapshot_.last_price_ = last_trade;
         // v1 has no session volume, open interest, or historical last trade.
         // TODO(simex-counterparty): Once the market-data contract is available,
@@ -342,7 +393,8 @@ struct SimexVenueAdapter::Impl {
         // TODO(simex-counterparty): Use the counterparty's quote cadence to decide
         // whether unchanged quotes expire and when evaluations must pause.
         // Periodic snapshots currently prove transport liveness, not quote freshness.
-        const bool ready = !bids.empty() && !asks.empty() && bids.begin()->first < asks.begin()->first;
+        const bool ready = bid_level_count > 0 && ask_level_count > 0 &&
+                           bid_levels[0].price < ask_levels[0].price;
         if (ready != usable) std::clog << "event=simex_market_state state=" << (ready ? "ready" : "waiting_for_market_data") << '\n';
         usable = ready;
         market->publishMarketUpdate(update);
