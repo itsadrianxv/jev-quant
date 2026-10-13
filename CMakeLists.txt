@@ -192,7 +192,7 @@ endif()
 if(JEV_ENABLE_SIMNOW)
     jev_add_gtest_test(simnow_adapter_tests LABEL integration
             SOURCES tests/integration/simnow_adapter_test.cpp)
-    add_executable(simnow_live_smoke tests/simnow_live_smoke.cpp)
+    add_executable(simnow_live_smoke tests/integration/simnow_live_smoke.cpp)
     target_link_libraries(simnow_live_smoke PRIVATE jev_trading_core)
 endif()
 
@@ -220,7 +220,7 @@ jev_add_gtest_test(integration_tests LABEL integration
 # The integration suite locates the local mock decision server by absolute
 # source path because ctest invokes each case from the build directory.
 target_compile_definitions(integration_tests PRIVATE
-        JEV_TEST_MOCK_SERVER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/tests/mock_jev_server.py")
+        JEV_TEST_MOCK_SERVER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/mock_jev_server.py")
 
 add_executable(jev_replay src/tools/jev_replay.cpp)
 target_link_libraries(jev_replay PRIVATE jev_trading_core)
@@ -231,8 +231,8 @@ target_link_libraries(jev_trading PRIVATE jev_trading_core)
 target_compile_options(jev_trading PRIVATE -Wall -Wextra -Wpedantic)
 
 if (JEV_ENABLE_LIVE_TESTS)
-    add_executable(jev_live_smoke tests/jev_live_smoke.cpp)
-    add_executable(binance_um_futures_smoke tests/binance_um_futures_smoke.cpp)
+    add_executable(jev_live_smoke tests/integration/jev_live_smoke.cpp)
+    add_executable(binance_um_futures_smoke tests/integration/binance_um_futures_smoke.cpp)
     target_link_libraries(binance_um_futures_smoke PRIVATE jev_trading_core)
     target_compile_options(binance_um_futures_smoke PRIVATE -Wall -Wextra -Wpedantic)
     target_link_libraries(jev_live_smoke PRIVATE jev_trading_core)

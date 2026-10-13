@@ -34,7 +34,7 @@
 #include "trading/strategy/trade_engine.h"
 
 #ifndef JEV_TEST_MOCK_SERVER_PATH
-#define JEV_TEST_MOCK_SERVER_PATH "mock_jev_server.py"
+#define JEV_TEST_MOCK_SERVER_PATH "integration/mock_jev_server.py"
 #endif
 
 namespace {
