@@ -53,6 +53,9 @@ class FeatureEngineInvalidTopOfBookTest : public FeatureEngineTest,
                                           public ::testing::WithParamInterface<
                                                   InvalidTopOfBookRow> {};
 
+// Table-driven: each crossed, locked, or sentinel-laden top of book must
+// reset every feature to invalid/zero instead of computing garbage from
+// unusable quotes.
 TEST_P(FeatureEngineInvalidTopOfBookTest, ResetsTheFeaturesToInvalid) {
     const auto& row = GetParam();
     publishTopOfBook(row.bid, row.ask, row.bid_qty, row.ask_qty);
@@ -70,11 +73,15 @@ INSTANTIATE_TEST_SUITE_P(TruthTable, FeatureEngineInvalidTopOfBookTest,
                          [](const ::testing::TestParamInfo<InvalidTopOfBookRow>&
                                     info) { return info.param.label; });
 
+// A freshly constructed engine has not seen any quote yet and must report
+// invalid (all-zero) features.
 TEST_F(FeatureEngineTest, FreshEngineReportsInvalidFeatures) {
     EXPECT_FALSE(engine_.features().valid_);
     EXPECT_DOUBLE_EQ(0.0, engine_.features().mid_price_);
 }
 
+// A valid top of book (bid 100/2, ask 101/6) yields mid 100.5, relative
+// spread in bps, total top qty 8, and imbalance -0.5 (ask-heavy).
 TEST_F(FeatureEngineTest, ValidTopOfBookComputesMidSpreadQtyAndImbalance) {
     publishTopOfBook(100, 101, 2, 6);
 
@@ -86,6 +93,8 @@ TEST_F(FeatureEngineTest, ValidTopOfBookComputesMidSpreadQtyAndImbalance) {
     EXPECT_DOUBLE_EQ(-0.5, features.top_of_book_qty_imbalance_);
 }
 
+// Mirroring the quantities (bid 6, ask 2) flips the imbalance sign to +0.5
+// while everything else stays consistent.
 TEST_F(FeatureEngineTest, BidHeavyTopOfBookMakesTheImbalancePositive) {
     publishTopOfBook(100, 101, 6, 2);
 
@@ -95,6 +104,9 @@ TEST_F(FeatureEngineTest, BidHeavyTopOfBookMakesTheImbalancePositive) {
     EXPECT_DOUBLE_EQ(0.5, features.top_of_book_qty_imbalance_);
 }
 
+// Quotes one step below the sentinel values are still legitimate numbers:
+// they must be treated as valid and produce huge-but-correct feature values,
+// proving the engine does not treat near-sentinel data as invalid.
 TEST_F(FeatureEngineTest, NearSentinelQuantitiesStayValid) {
     const Price bid = Common::Price_INVALID - 100;
     const Price ask = Common::Price_INVALID - 1;
@@ -108,6 +120,8 @@ TEST_F(FeatureEngineTest, NearSentinelQuantitiesStayValid) {
     EXPECT_GT(features.relative_spread_bps_, 0.0);
 }
 
+// After an invalid top of book resets the features, the next valid top of
+// book must restore valid features (recovery works).
 TEST_F(FeatureEngineTest, InvalidTopOfBookStaysResetUntilAValidUpdate) {
     publishTopOfBook(101, 100, 1, 1);
     EXPECT_FALSE(engine_.features().valid_);

@@ -25,6 +25,9 @@ Json buildRequest(const Trading::JevEvaluationState& state) {
     return Json::parse(client.buildRequestBody(state));
 }
 
+// A flat-position request must declare the jev model version and, with no
+// open criteria field, carry only "open a position" and "take no action"
+// criteria (no "close" key).
 TEST(JevHttpRequestBodyTest, FlatPositionSelectsTheOpenAndHoldCriteria) {
     const Json request = buildRequest(makeState());
 
@@ -35,6 +38,8 @@ TEST(JevHttpRequestBodyTest, FlatPositionSelectsTheOpenAndHoldCriteria) {
     EXPECT_FALSE(criteria.contains("close"));
 }
 
+// Depth data the strategy does not have (volume, limit price bands) ships
+// as explicit JSON nulls rather than being omitted or zero.
 TEST(JevHttpRequestBodyTest, FlatPositionShipsNullVolumeAndLimitPrices) {
     const Json request = buildRequest(makeState());
 
@@ -44,6 +49,8 @@ TEST(JevHttpRequestBodyTest, FlatPositionShipsNullVolumeAndLimitPrices) {
     EXPECT_TRUE(depth.at("lower_limit_price").is_null());
 }
 
+// With a non-zero net position the request adds the "close" criteria and
+// rewords "open" to "increase exposure" so the LLM can consider closing.
 TEST(JevHttpRequestBodyTest, OccupiedPositionSelectsTheIncreaseAndCloseCriteria) {
     auto state = makeState();
     state.position_.net_position_ = 2;
@@ -59,6 +66,8 @@ TEST(JevHttpRequestBodyTest, OccupiedPositionSelectsTheIncreaseAndCloseCriteria)
               close.get<std::string>().find("Reduce the current position"));
 }
 
+// A LIVE working order must be serialized into the request with all its
+// attributes (id, side, price, qty, type, offset, state) as JSON strings.
 TEST(JevHttpRequestBodyTest, LiveWorkingOrdersShipTheirAttributes) {
     auto state = makeState();
     auto& order = state.working_orders_[0];
@@ -85,6 +94,8 @@ TEST(JevHttpRequestBodyTest, LiveWorkingOrdersShipTheirAttributes) {
     EXPECT_EQ("LIVE", shipped.at("state").get<std::string>());
 }
 
+// The request carries the evaluation id for correlation and must not leak
+// the internal "endpoint" key to the server.
 TEST(JevHttpRequestBodyTest, RequestCarriesEvaluationIdAndOmitsTheEndpoint) {
     const Json request = buildRequest(makeState());
 
@@ -92,6 +103,10 @@ TEST(JevHttpRequestBodyTest, RequestCarriesEvaluationIdAndOmitsTheEndpoint) {
     EXPECT_FALSE(request.contains("endpoint"));
 }
 
+// The state section ships position/risk/account blocks, keeps last_price
+// but drops raw bid/ask ladders from depth, and the market features are
+// rescaled by price_scale_ (100.5 -> 1.005) with spreads and imbalance
+// passed through unchanged.
 TEST(JevHttpRequestBodyTest, EvaluationStateShipsScaledFeaturesAndEssentialKeys) {
     auto state = makeState();
     state.price_scale_ = 100.0;
@@ -120,6 +135,8 @@ TEST(JevHttpRequestBodyTest, EvaluationStateShipsScaledFeaturesAndEssentialKeys)
     EXPECT_NEAR(10000.0 / 100.5, features.at("relative_spread_bps").get<double>(), 1e-9);
 }
 
+// DEAD working orders are history, not current state, so they must not
+// appear in the request's working_orders array.
 TEST(JevHttpRequestBodyTest, DeadWorkingOrdersAreOmitted) {
     auto state = makeState();
     state.working_orders_[0].order_id_ = 12;

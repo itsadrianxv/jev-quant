@@ -4,12 +4,16 @@
 
 namespace {
 
+// A freshly created decision queue has no readable decision.
 TEST(JevDecisionQueueTest, EmptyQueueHasNothingToRead) {
     Trading::JevDecisionLFQueue queue(4);
 
     EXPECT_EQ(nullptr, queue.getNextToRead());
 }
 
+// Writing a decision into the write slot and publishing it makes the exact
+// payload readable exactly once; after the read is consumed there is
+// nothing left to read.
 TEST(JevDecisionQueueTest, PublishedDecisionIsReadableOnce) {
     Trading::JevDecisionLFQueue queue(4);
 

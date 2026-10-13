@@ -41,6 +41,8 @@ std::string gridPrice(double value) {
     return buffer;
 }
 
+// A freshly constructed book has not seen a snapshot: not ready, no best
+// bid/ask, and no buffered pending events.
 TEST(BinanceDepthBookTest, FreshBookIsNotReadyAndHasNoTopOfBook) {
     BinanceDepthBook book;
 
@@ -50,6 +52,8 @@ TEST(BinanceDepthBookTest, FreshBookIsNotReadyAndHasNoTopOfBook) {
     EXPECT_EQ(0u, book.pendingCount());
 }
 
+// Depth events arriving before a snapshot cannot be applied yet; they are
+// buffered in the pending ring instead of mutating an unprimed book.
 TEST(BinanceDepthBookTest, EventsBeforeSnapshotBufferInThePendingRing) {
     BinanceDepthBook book;
 
@@ -62,6 +66,9 @@ TEST(BinanceDepthBookTest, EventsBeforeSnapshotBufferInThePendingRing) {
     EXPECT_FALSE(book.bestBid().has_value());
 }
 
+// Installing a snapshot primes the book and then replays all buffered
+// pending events in order, ending up with the post-event state (snapshot
+// level plus the buffered update).
 TEST(BinanceDepthBookTest, SnapshotInstallAppliesTheBufferedEventsInOrder) {
     BinanceDepthBook book;
     book.onDepthEvent(depthEvent(10, 12, 9,
@@ -85,6 +92,8 @@ TEST(BinanceDepthBookTest, SnapshotInstallAppliesTheBufferedEventsInOrder) {
     EXPECT_EQ(100.9, book.bestAsk()->price);
 }
 
+// An event whose final update id is not newer than the installed snapshot's
+// lastUpdateId is stale and must be ignored entirely.
 TEST(BinanceDepthBookTest, StaleEventsAreSkippedWithoutChangingTheBook) {
     BinanceDepthBook book;
     book.installSnapshot(nlohmann::json{
@@ -102,6 +111,8 @@ TEST(BinanceDepthBookTest, StaleEventsAreSkippedWithoutChangingTheBook) {
     EXPECT_EQ(12u, book.lastUpdateId());
 }
 
+// An event with a non-zero quantity at an existing price updates that
+// level's quantity in place without adding a new level.
 TEST(BinanceDepthBookTest, NonZeroQuantityUpdatesTheLevelInPlace) {
     BinanceDepthBook book;
     book.installSnapshot(nlohmann::json{
@@ -118,6 +129,8 @@ TEST(BinanceDepthBookTest, NonZeroQuantityUpdatesTheLevelInPlace) {
     EXPECT_EQ(7.0, book.bestBid()->qty);
 }
 
+// Per Binance semantics a zero quantity in an event deletes the price level
+// on both sides.
 TEST(BinanceDepthBookTest, ZeroQuantityRemovesTheLevel) {
     BinanceDepthBook book;
     book.installSnapshot(nlohmann::json{
@@ -137,6 +150,8 @@ TEST(BinanceDepthBookTest, ZeroQuantityRemovesTheLevel) {
     EXPECT_EQ(101.0, book.bestAsk()->price);
 }
 
+// An event missing required fields (U/u/pu/b/a) is malformed and must fail
+// fast with a runtime error.
 TEST(BinanceDepthBookTest, MalformedEventThrowsRuntimeError) {
     BinanceDepthBook book;
     book.installSnapshot(nlohmann::json{
@@ -147,6 +162,9 @@ TEST(BinanceDepthBookTest, MalformedEventThrowsRuntimeError) {
     EXPECT_THROW(book.onDepthEvent(nlohmann::json{{"U", 1}}), std::runtime_error);
 }
 
+// A snapshot whose levels arrive in arbitrary order is normalized on
+// install: bids sorted descending, asks ascending, so level 0 is always the
+// best price.
 TEST(BinanceDepthBookTest, SnapshotInstallSortsBidsDescendingAndAsksAscending) {
     BinanceDepthBook book;
 
@@ -165,6 +183,8 @@ TEST(BinanceDepthBookTest, SnapshotInstallSortsBidsDescendingAndAsksAscending) {
     EXPECT_EQ(101.0, book.bestAsk()->price);
 }
 
+// Reinstalling a snapshot replaces the whole book contents (no stale levels
+// carried over) and advances lastUpdateId.
 TEST(BinanceDepthBookTest, ReinstallSnapshotReplacesEveryLevel) {
     BinanceDepthBook book;
     book.installSnapshot(nlohmann::json{
@@ -186,6 +206,9 @@ TEST(BinanceDepthBookTest, ReinstallSnapshotReplacesEveryLevel) {
     EXPECT_EQ(20u, book.lastUpdateId());
 }
 
+// buildMarketUpdate emits a DEPTH_SNAPSHOT for the given ticker with double
+// prices scaled into integer Price ticks, bids and asks each in best-first
+// order.
 TEST(BinanceDepthBookTest, PublishedMarketUpdateScalesPricesInLevelOrder) {
     BinanceDepthBook book;
     book.installSnapshot(nlohmann::json{
@@ -205,6 +228,8 @@ TEST(BinanceDepthBookTest, PublishedMarketUpdateScalesPricesInLevelOrder) {
               published.depth_snapshot_.asks_[1].price_);
 }
 
+// An event that skips ahead of lastUpdateId+1 without covering the gap is a
+// sequence break: it must throw and leave the book state untouched.
 TEST(BinanceDepthBookTest, SequenceGapThrowsAndLeavesTheBookUnchanged) {
     BinanceDepthBook book;
     book.installSnapshot(nlohmann::json{
@@ -219,6 +244,8 @@ TEST(BinanceDepthBookTest, SequenceGapThrowsAndLeavesTheBookUnchanged) {
     EXPECT_EQ(1u, book.bidCount());
 }
 
+// An event whose [U,u] range overlaps already-applied ids is tolerated as
+// long as it reaches lastUpdateId+1; it is applied and advances the id.
 TEST(BinanceDepthBookTest, OverlappingUpdateRangeIsTolerated) {
     BinanceDepthBook book;
     book.installSnapshot(nlohmann::json{
@@ -234,6 +261,8 @@ TEST(BinanceDepthBookTest, OverlappingUpdateRangeIsTolerated) {
     EXPECT_EQ(2u, book.bidCount());
 }
 
+// The pending ring holds at most kPendingEventCapacity pre-snapshot events;
+// a snapshot install drains it and replays every buffered event in order.
 TEST(BinanceDepthBookTest, PendingRingIsBoundedAtTheEventCapacity) {
     BinanceDepthBook book;
     for (std::size_t i = 0; i < BinanceDepthBook::kPendingEventCapacity; ++i) {
@@ -348,6 +377,10 @@ auto sameDepthSnapshot(const DepthSnapshot& left, const DepthSnapshot& right)
     return true;
 }
 
+// Property test: replays 6000 seeded random depth events against both the
+// pooled book and the retired ordered-map reference implementation,
+// checking the published DEPTH_SNAPSHOT, level counts, lastUpdateId, and
+// best bid/ask after every event.
 TEST(BinanceDepthBookTest, PublishedUpdatesMatchTheReferenceModel) {
     std::mt19937 generator(20261012u);
     BinanceDepthBook book;

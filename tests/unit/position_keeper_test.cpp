@@ -33,6 +33,9 @@ void seedPositionDay(Trading::PositionInfo& info, PositionDay day, Qty qty,
     info.position_days_[static_cast<std::size_t>(day)] = {qty, vwap};
 }
 
+// A default-constructed PositionInfo is flat: zero position, zero day lots,
+// invalid average entry price, no closeable quantity, INVALID close offset,
+// and all pnl values at zero.
 TEST(PositionInfoTest, FreshPositionHasNoCloseableQuantity) {
     Trading::PositionInfo info;
 
@@ -48,6 +51,8 @@ TEST(PositionInfoTest, FreshPositionHasNoCloseableQuantity) {
     EXPECT_DOUBLE_EQ(0.0, info.total_pnl_);
 }
 
+// Two open buys accumulate into a growing long position and the average
+// entry price becomes the volume-weighted price (100 and 104 -> 102).
 TEST(PositionInfoTest, OpenBuyFillsAccumulatePositionAndVwap) {
     Trading::PositionInfo info;
 
@@ -62,6 +67,8 @@ TEST(PositionInfoTest, OpenBuyFillsAccumulatePositionAndVwap) {
     EXPECT_EQ(102, info.averageEntryPrice());
 }
 
+// An open sell builds a negative (short) position and records the entry
+// price as the average entry price.
 TEST(PositionInfoTest, OpenSellFillBuildsShortPosition) {
     Trading::PositionInfo info;
 
@@ -72,6 +79,9 @@ TEST(PositionInfoTest, OpenSellFillBuildsShortPosition) {
     EXPECT_EQ(50, info.averageEntryPrice());
 }
 
+// closeOffsetFor picks CLOSE_YESTERDAY when a yesterday lot exists, and the
+// matching CLOSE_YESTERDAY fill reduces only that lot while realizing pnl
+// against the yesterday vwap (sell 97 vs vwap 95 -> +4).
 TEST(PositionInfoTest, CloseAllocatesTheYesterdayPositionFirst) {
     Trading::PositionInfo info;
     info.position_ = 3;
@@ -89,6 +99,8 @@ TEST(PositionInfoTest, CloseAllocatesTheYesterdayPositionFirst) {
     EXPECT_DOUBLE_EQ(4.0, info.total_pnl_);
 }
 
+// A generic CLOSE fill consumes the yesterday lot before the today lot, so a
+// 3-lot close empties both lots and realizes pnl across both vwaps.
 TEST(PositionInfoTest, GenericCloseConsumesYesterdayThenToday) {
     Trading::PositionInfo info;
     info.position_ = 3;
@@ -103,6 +115,9 @@ TEST(PositionInfoTest, GenericCloseConsumesYesterdayThenToday) {
     EXPECT_DOUBLE_EQ(4.0, info.realized_pnl_);
 }
 
+// A CLOSE_TODAY fill reduces only the today lot; the yesterday lot is left
+// untouched and pnl is realized against the today vwap (sell 88 vs vwap 90
+// -> -2).
 TEST(PositionInfoTest, CloseTodayTouchesOnlyTheTodayPosition) {
     Trading::PositionInfo info;
     info.position_ = 4;
@@ -117,6 +132,8 @@ TEST(PositionInfoTest, CloseTodayTouchesOnlyTheTodayPosition) {
     EXPECT_DOUBLE_EQ(-2.0, info.realized_pnl_);
 }
 
+// Fills with zero or sentinel (Qty_INVALID) exec quantity carry no
+// information and are ignored entirely.
 TEST(PositionInfoTest, ZeroOrInvalidExecQuantityIsIgnored) {
     Trading::PositionInfo info;
 
@@ -127,6 +144,8 @@ TEST(PositionInfoTest, ZeroOrInvalidExecQuantityIsIgnored) {
     EXPECT_EQ(0u, info.todayQty());
 }
 
+// For a long position the unrealized pnl marks to the BBO mid price: 2 lots
+// entered at 100 with mid 110 gives +20.
 TEST(PositionInfoTest, UnrealizedPnlUsesTheBboMidPriceForLongs) {
     Trading::PositionInfo info;
     info.onFill(makeOpenFill(Side::BUY, 100, 2));
@@ -140,6 +159,8 @@ TEST(PositionInfoTest, UnrealizedPnlUsesTheBboMidPriceForLongs) {
     EXPECT_DOUBLE_EQ(20.0, info.total_pnl_);
 }
 
+// For a short position the unrealized pnl marks to the BBO mid price with
+// sign inverted: 2 lots short at 100 with mid 91 gives +18.
 TEST(PositionInfoTest, UnrealizedPnlUsesTheBboMidPriceForShorts) {
     Trading::PositionInfo info;
     info.onFill(makeOpenFill(Side::SELL, 100, 2));
@@ -153,6 +174,7 @@ TEST(PositionInfoTest, UnrealizedPnlUsesTheBboMidPriceForShorts) {
     EXPECT_DOUBLE_EQ(18.0, info.total_pnl_);
 }
 
+// A flat position stays at zero unrealized pnl even when a BBO is published.
 TEST(PositionInfoTest, FlatPositionHasZeroUnrealizedPnl) {
     Trading::PositionInfo info;
     Trading::BBO bbo;
@@ -165,6 +187,8 @@ TEST(PositionInfoTest, FlatPositionHasZeroUnrealizedPnl) {
     EXPECT_DOUBLE_EQ(0.0, info.total_pnl_);
 }
 
+// PositionKeeper only reacts to FILLED client responses; other response
+// types (e.g. ACCEPTED) must not move the position.
 TEST(PositionKeeperTest, NonFilledResponsesAreIgnored) {
     Trading::PositionKeeper keeper;
     Exchange::ClientResponse accepted;
@@ -180,6 +204,8 @@ TEST(PositionKeeperTest, NonFilledResponsesAreIgnored) {
     EXPECT_EQ(0, keeper.getPositionInfo(0).position_);
 }
 
+// A FILLED open-buy response accrues the executed quantity into the ticker's
+// position and its today lot.
 TEST(PositionKeeperTest, FilledResponsesAccrueTheTickerPosition) {
     Trading::PositionKeeper keeper;
 

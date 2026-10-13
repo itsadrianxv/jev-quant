@@ -38,6 +38,8 @@ void expectBbo(const MarketOrderBook& book, Price bid_price, Qty bid_qty,
     EXPECT_EQ(ask_qty, bbo->ask_qty_);
 }
 
+// A fresh book has no quotes: BBO carries sentinel prices/quantities and the
+// mode is still UNINITIALIZED until a snapshot or incremental update arrives.
 TEST(MarketOrderBookTest, FreshBookReportsNoTopOfBook) {
     MarketOrderBook book(0);
 
@@ -46,6 +48,8 @@ TEST(MarketOrderBookTest, FreshBookReportsNoTopOfBook) {
     EXPECT_EQ(MarketOrderBook::BookMode::UNINITIALIZED, book.mode());
 }
 
+// A DEPTH_SNAPSHOT update switches the book into snapshot mode and derives
+// the BBO from the front bid/ask levels of the snapshot.
 TEST(MarketOrderBookTest, SnapshotUpdateDerivesBboFromFrontLevels) {
     MarketOrderBook book(0);
     MarketUpdate snapshot;
@@ -59,6 +63,8 @@ TEST(MarketOrderBookTest, SnapshotUpdateDerivesBboFromFrontLevels) {
     EXPECT_EQ(MarketOrderBook::BookMode::DEPTH_SNAPSHOT, book.mode());
 }
 
+// Installing a depth snapshot after the book has already received an
+// incremental (ADD) update is a mode violation and must fail fast.
 TEST(MarketOrderBookTest, DirectSnapshotInstallInIncrementalModeThrowsLogicError) {
     MarketOrderBook book(0);
     book.onMarketUpdate(makeUpdate(MarketUpdateType::ADD, 1, Side::BUY, 100, 2));
@@ -66,6 +72,8 @@ TEST(MarketOrderBookTest, DirectSnapshotInstallInIncrementalModeThrowsLogicError
     EXPECT_THROW(book.onDepthSnapshot(Exchange::DepthSnapshot{}), std::logic_error);
 }
 
+// Feeding an incremental ADD after the book has switched to snapshot mode is
+// a mode violation and must fail fast.
 TEST(MarketOrderBookTest, IncrementalUpdateAfterSnapshotInstallThrowsLogicError) {
     MarketOrderBook book(0);
     MarketUpdate snapshot;
@@ -79,6 +87,8 @@ TEST(MarketOrderBookTest, IncrementalUpdateAfterSnapshotInstallThrowsLogicError)
                  std::logic_error);
 }
 
+// Multiple ADDs at the same price aggregate into one level quantity: the
+// best bid is 100 with 2+3=5 and the best ask is 102 with 4.
 TEST(MarketOrderBookTest, AddsAggregateQuantitiesAtTheBestPrices) {
     MarketOrderBook book(0);
 
@@ -91,6 +101,8 @@ TEST(MarketOrderBookTest, AddsAggregateQuantitiesAtTheBestPrices) {
     expectBbo(book, 100, 5, 102, 4);
 }
 
+// A MODIFY that stays at the same price replaces the order's contribution to
+// that level (order 2 goes 3 -> 6, level total 2+6=8).
 TEST(MarketOrderBookTest, ModifyWithinLevelAdjustsAggregatedQuantity) {
     MarketOrderBook book(0);
     book.onMarketUpdate(makeUpdate(MarketUpdateType::ADD, 1, Side::BUY, 100, 2));
@@ -101,6 +113,8 @@ TEST(MarketOrderBookTest, ModifyWithinLevelAdjustsAggregatedQuantity) {
     expectBbo(book, 100, 8, Common::Price_INVALID, Common::Qty_INVALID);
 }
 
+// A MODIFY to a different price moves the order between levels: 99/1 leaves
+// and reappears at 100, so the best bid becomes 100 with 1+2=3.
 TEST(MarketOrderBookTest, ModifyAcrossPricesMovesTheRestingQuantity) {
     MarketOrderBook book(0);
     book.onMarketUpdate(makeUpdate(MarketUpdateType::ADD, 1, Side::BUY, 99, 1));
@@ -111,6 +125,8 @@ TEST(MarketOrderBookTest, ModifyAcrossPricesMovesTheRestingQuantity) {
     expectBbo(book, 100, 3, Common::Price_INVALID, Common::Qty_INVALID);
 }
 
+// A MODIFY can improve the ask: moving order 5 from 103 down to 101 makes it
+// the new best ask.
 TEST(MarketOrderBookTest, ModifyAcrossPricesMovesTheBestAsk) {
     MarketOrderBook book(0);
     book.onMarketUpdate(makeUpdate(MarketUpdateType::ADD, 4, Side::SELL, 102, 4));
@@ -121,6 +137,9 @@ TEST(MarketOrderBookTest, ModifyAcrossPricesMovesTheBestAsk) {
     expectBbo(book, Common::Price_INVALID, Common::Qty_INVALID, 101, 1);
 }
 
+// Cancels remove each order's contribution; when the last order at a level
+// is cancelled the level disappears and the BBO falls back to the next best
+// price, eventually to no bid at all.
 TEST(MarketOrderBookTest, CancelsDrainTheLevelUntilItDisappears) {
     MarketOrderBook book(0);
     book.onMarketUpdate(makeUpdate(MarketUpdateType::ADD, 1, Side::BUY, 100, 2));
@@ -138,6 +157,8 @@ TEST(MarketOrderBookTest, CancelsDrainTheLevelUntilItDisappears) {
               Common::Price_INVALID, Common::Qty_INVALID);
 }
 
+// An ADD for an order id that is still live replaces the resting order:
+// 102/4 is replaced by 104/2 rather than aggregated.
 TEST(MarketOrderBookTest, ReAddWithLiveOrderIdReplacesTheRestingOrder) {
     MarketOrderBook book(0);
     book.onMarketUpdate(makeUpdate(MarketUpdateType::ADD, 4, Side::SELL, 102, 4));
@@ -147,6 +168,7 @@ TEST(MarketOrderBookTest, ReAddWithLiveOrderIdReplacesTheRestingOrder) {
     expectBbo(book, Common::Price_INVALID, Common::Qty_INVALID, 104, 2);
 }
 
+// A MODIFY referencing an unknown order id is a no-op on the book.
 TEST(MarketOrderBookTest, ModifyOfUnknownOrderIdLeavesTheBookUnchanged) {
     MarketOrderBook book(0);
     book.onMarketUpdate(makeUpdate(MarketUpdateType::ADD, 4, Side::SELL, 102, 4));
@@ -156,6 +178,7 @@ TEST(MarketOrderBookTest, ModifyOfUnknownOrderIdLeavesTheBookUnchanged) {
     expectBbo(book, Common::Price_INVALID, Common::Qty_INVALID, 102, 4);
 }
 
+// A CANCEL referencing an unknown order id is a no-op on the book.
 TEST(MarketOrderBookTest, CancelOfUnknownOrderIdLeavesTheBookUnchanged) {
     MarketOrderBook book(0);
     book.onMarketUpdate(makeUpdate(MarketUpdateType::ADD, 4, Side::SELL, 102, 4));
@@ -165,6 +188,8 @@ TEST(MarketOrderBookTest, CancelOfUnknownOrderIdLeavesTheBookUnchanged) {
     expectBbo(book, Common::Price_INVALID, Common::Qty_INVALID, 102, 4);
 }
 
+// SNAPSHOT_START and SNAPSHOT_END boundary markers are consumed without
+// touching the book contents, so the incremental BBO survives.
 TEST(MarketOrderBookTest, SnapshotBoundaryUpdatesDoNotDisturbTheIncrementalBook) {
     MarketOrderBook book(0);
     book.onMarketUpdate(makeUpdate(MarketUpdateType::ADD, 4, Side::SELL, 102, 4));
@@ -175,6 +200,7 @@ TEST(MarketOrderBookTest, SnapshotBoundaryUpdatesDoNotDisturbTheIncrementalBook)
     expectBbo(book, Common::Price_INVALID, Common::Qty_INVALID, 102, 4);
 }
 
+// TRADE updates carry no book mutation: the BBO stays exactly as it was.
 TEST(MarketOrderBookTest, TradeUpdatesAreConsumedWithoutChangingTheBook) {
     MarketOrderBook book(0);
     book.onMarketUpdate(makeUpdate(MarketUpdateType::ADD, 1, Side::BUY, 100, 2));
@@ -185,6 +211,8 @@ TEST(MarketOrderBookTest, TradeUpdatesAreConsumedWithoutChangingTheBook) {
     expectBbo(book, 100, 2, 102, 4);
 }
 
+// CLEAR wipes every order and level, then the book accepts the same orders
+// again as if it were fresh (ids can be reused after a clear).
 TEST(MarketOrderBookTest, ClearEmptiesTheBookAndAcceptsNewOrdersAfterwards) {
     MarketOrderBook book(0);
     book.onMarketUpdate(makeUpdate(MarketUpdateType::ADD, 1, Side::BUY, 100, 2));
@@ -205,6 +233,9 @@ TEST(MarketOrderBookTest, ClearEmptiesTheBookAndAcceptsNewOrdersAfterwards) {
     expectBbo(book, 100, 5, 102, 4);
 }
 
+// Filling every order slot up to the load-factor ceiling works, but the next
+// ADD must fail fast with a runtime_error instead of silently corrupting the
+// pooled order slots.
 TEST(MarketOrderBookTest, OrderSlotExhaustionFailsFastAtTheLoadFactorCeiling) {
     MarketOrderBook book(0);
     for (OrderId order_id = 1; order_id <= Trading::kMaxLiveOrderEntries; ++order_id) {
@@ -219,6 +250,8 @@ TEST(MarketOrderBookTest, OrderSlotExhaustionFailsFastAtTheLoadFactorCeiling) {
     EXPECT_EQ(Trading::kMaxLiveOrderEntries, book.getBBO()->bid_qty_);
 }
 
+// After a CLEAR the exhausted order slots are all released, so new orders
+// are accepted again.
 TEST(MarketOrderBookTest, ClearedOrderSlotsAcceptNewOrdersAgain) {
     MarketOrderBook book(0);
     for (OrderId order_id = 1; order_id <= Trading::kMaxLiveOrderEntries; ++order_id) {
@@ -231,6 +264,8 @@ TEST(MarketOrderBookTest, ClearedOrderSlotsAcceptNewOrdersAgain) {
     expectBbo(book, 100, 1, Common::Price_INVALID, Common::Qty_INVALID);
 }
 
+// Filling every bid price level up to the per-side ceiling works, but adding
+// one more level must fail fast with a runtime_error.
 TEST(MarketOrderBookTest, LevelSlotExhaustionFailsFastPerSide) {
     MarketOrderBook book(0);
     for (Price price = 1;
@@ -254,6 +289,8 @@ TEST(MarketOrderBookTest, LevelSlotExhaustionFailsFastPerSide) {
     EXPECT_EQ(1, book.getBBO()->bid_qty_);
 }
 
+// Level slot exhaustion on the bid side does not affect the ask side: asks
+// can still be added.
 TEST(MarketOrderBookTest, ExhaustedBidSideLeavesTheAskSideUsable) {
     MarketOrderBook book(0);
     for (Price price = 1;
@@ -269,6 +306,8 @@ TEST(MarketOrderBookTest, ExhaustedBidSideLeavesTheAskSideUsable) {
     EXPECT_EQ(1000000, book.getBBO()->ask_price_);
 }
 
+// Cancelling the order at a level frees its level slot, so a new price level
+// is accepted again afterwards.
 TEST(MarketOrderBookTest, FreedLevelSlotsAcceptNewPricesAgain) {
     MarketOrderBook book(0);
     for (Price price = 1;
@@ -285,6 +324,9 @@ TEST(MarketOrderBookTest, FreedLevelSlotsAcceptNewPricesAgain) {
     EXPECT_EQ(2000000, book.getBBO()->bid_price_);
 }
 
+// A MODIFY that would need a new level slot while all slots are taken fails
+// fast, and the original resting order stays intact (it can still be
+// cancelled afterwards).
 TEST(MarketOrderBookTest, ModifyToANewLevelAtExhaustionFailsFastAndKeepsTheRestingOrder) {
     MarketOrderBook book(0);
     for (Price price = 1;
@@ -304,9 +346,11 @@ TEST(MarketOrderBookTest, ModifyToANewLevelAtExhaustionFailsFastAndKeepsTheResti
               book.getBBO()->bid_price_);
 }
 
+// Order ids 1, 65537, 131073 all hash to the same order-slot home, so
+// erasing the middle one exercises the backward-shift compaction: the
+// remaining probe chain orders must stay reachable and the freed slot
+// reusable.
 TEST(MarketOrderBookTest, ErasingAMiddleCollidingOrderKeepsProbeChainOrdersReachable) {
-    // Order ids 1, 65537, 131073 all hash to the same order-slot home, so
-    // erasing the middle one exercises the backward-shift compaction.
     MarketOrderBook book(0);
     book.onMarketUpdate(makeUpdate(MarketUpdateType::ADD, 1, Side::BUY, 100, 1));
     book.onMarketUpdate(makeUpdate(MarketUpdateType::ADD, 65537, Side::BUY, 100, 1));
@@ -329,6 +373,10 @@ TEST(MarketOrderBookTest, ErasingAMiddleCollidingOrderKeepsProbeChainOrdersReach
               Common::Price_INVALID, Common::Qty_INVALID);
 }
 
+// Property test: replays a deterministic seeded sequence of 20000 random
+// ADD/MODIFY/CANCEL/CLEAR/TRADE operations against both the pooled book and
+// a simple ordered-map reference model, comparing the BBO after every
+// operation so any divergence is caught at the exact step.
 TEST(MarketOrderBookTest, MatchesTheReferenceModelUnderSeededRandomOperations) {
     // Mirror of the pre-pooled ordered-map book behavior, compared op by op
     // under a fixed seed so the sequence is fully deterministic.
@@ -470,10 +518,11 @@ TEST(MarketOrderBookTest, MatchesTheReferenceModelUnderSeededRandomOperations) {
     }
 }
 
+// Prices 1, 4097, 8193 all hash to the same level-slot home on the bid
+// side, so erasing the middle level exercises the backward-shift
+// compaction of the level slot array: remaining levels stay reachable as
+// best bid and the freed slot accepts a re-added price again.
 TEST(MarketOrderBookTest, ErasingAMiddleCollidingLevelKeepsProbeChainLevelsReachable) {
-    // Prices 1, 4097, 8193 all hash to the same level-slot home on the bid
-    // side, so erasing the middle level exercises the backward-shift
-    // compaction of the level slot array.
     MarketOrderBook book(0);
     book.onMarketUpdate(makeUpdate(MarketUpdateType::ADD, 1, Side::BUY, 1, 1));
     book.onMarketUpdate(makeUpdate(MarketUpdateType::ADD, 2, Side::BUY, 4097, 1));

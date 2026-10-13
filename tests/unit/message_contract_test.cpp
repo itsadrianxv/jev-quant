@@ -10,6 +10,8 @@
 
 namespace {
 
+// A depth snapshot's toString must render the update type so the snapshot is
+// identifiable in logs.
 TEST(MessageRenderingTest, DepthSnapshotToStringCarriesTheUpdateType) {
     Exchange::MarketUpdate snapshot;
     snapshot.type_ = Exchange::MarketUpdateType::DEPTH_SNAPSHOT;
@@ -20,6 +22,8 @@ TEST(MessageRenderingTest, DepthSnapshotToStringCarriesTheUpdateType) {
     EXPECT_NE(std::string::npos, snapshot.toString().find("DEPTH_SNAPSHOT"));
 }
 
+// A client request's toString must render the order type (LIMIT) so the
+// request is identifiable in logs.
 TEST(MessageRenderingTest, ClientRequestToStringCarriesTheOrderType) {
     Exchange::ClientRequest request;
     request.type_ = Exchange::ClientRequestType::NEW;
@@ -29,6 +33,8 @@ TEST(MessageRenderingTest, ClientRequestToStringCarriesTheOrderType) {
     EXPECT_NE(std::string::npos, request.toString().find("LIMIT"));
 }
 
+// A client response's toString must render the response type (REJECTED) so
+// the response is identifiable in logs.
 TEST(MessageRenderingTest, ClientResponseToStringCarriesTheResponseType) {
     Exchange::ClientResponse response;
     response.type_ = Exchange::ClientResponseType::REJECTED;
@@ -36,6 +42,8 @@ TEST(MessageRenderingTest, ClientResponseToStringCarriesTheResponseType) {
     EXPECT_NE(std::string::npos, response.toString().find("REJECTED"));
 }
 
+// An OMOrder's toString must render the order offset (CLOSE_YESTERDAY) so
+// the order state is identifiable in logs.
 TEST(MessageRenderingTest, OmOrderToStringCarriesTheOrderOffset) {
     Trading::OMOrder order;
     order.order_type_ = Common::OrderType::LIMIT;

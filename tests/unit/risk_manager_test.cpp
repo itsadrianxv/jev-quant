@@ -66,6 +66,10 @@ constexpr RiskCase kRiskCases[] = {
 class RiskManagerCheckPreTradeRiskTest
         : public ::testing::TestWithParam<RiskCase> {};
 
+// Table-driven: seeds the PositionKeeper with each scenario's position, day
+// lots, pnl, and limits, then checks that checkPreTradeRisk returns the
+// expected verdict (INVALID, ORDER_TOO_LARGE, POSITION_TOO_LARGE,
+// CLOSE_QUANTITY_TOO_LARGE, LOSS_TOO_LARGE, or ALLOWED).
 TEST_P(RiskManagerCheckPreTradeRiskTest, ProducesTheExpectedVerdict) {
     const RiskCase& risk_case = GetParam();
     Trading::PositionKeeper keeper;
@@ -92,6 +96,8 @@ INSTANTIATE_TEST_SUITE_P(TruthTable, RiskManagerCheckPreTradeRiskTest,
                              return info.param.label;
                          });
 
+// A RiskManager built without a PositionKeeper cannot validate anything and
+// must fail closed with INVALID.
 TEST(RiskManagerTest, NullPositionKeeperYieldsInvalid) {
     Trading::RiskManager manager(nullptr, {10, 100, 0.0});
 
@@ -109,6 +115,8 @@ class RiskManagerResolveCloseOffsetTest : public ::testing::Test {
     Trading::RiskManager manager_;
 };
 
+// With both yesterday and today lots available, the close offset resolves to
+// CLOSE_YESTERDAY because older positions are closed first.
 TEST_F(RiskManagerResolveCloseOffsetTest, PrefersTheYesterdayPosition) {
     info().position_ = 3;
     info().position_days_[static_cast<std::size_t>(PositionDay::YESTERDAY)] = {2, 95.0};
@@ -117,6 +125,8 @@ TEST_F(RiskManagerResolveCloseOffsetTest, PrefersTheYesterdayPosition) {
     EXPECT_EQ(OrderOffset::CLOSE_YESTERDAY, manager_.resolveCloseOffset(0, 1));
 }
 
+// With no yesterday lot but an open today lot, the close offset resolves to
+// CLOSE_TODAY.
 TEST_F(RiskManagerResolveCloseOffsetTest, FallsBackToTheTodayPosition) {
     info().position_ = 3;
     info().position_days_[static_cast<std::size_t>(PositionDay::TODAY)] = {3, 90.0};
@@ -124,12 +134,14 @@ TEST_F(RiskManagerResolveCloseOffsetTest, FallsBackToTheTodayPosition) {
     EXPECT_EQ(OrderOffset::CLOSE_TODAY, manager_.resolveCloseOffset(0, 1));
 }
 
+// A flat position has nothing to close, so the offset resolution is INVALID.
 TEST_F(RiskManagerResolveCloseOffsetTest, NothingCloseableIsInvalid) {
     info().position_ = 0;
 
     EXPECT_EQ(OrderOffset::INVALID, manager_.resolveCloseOffset(0, 1));
 }
 
+// A close request for zero quantity is not actionable and resolves to INVALID.
 TEST_F(RiskManagerResolveCloseOffsetTest, ZeroRequestIsInvalid) {
     info().position_ = 2;
     info().position_days_[static_cast<std::size_t>(PositionDay::YESTERDAY)] = {2, 95.0};
@@ -137,6 +149,8 @@ TEST_F(RiskManagerResolveCloseOffsetTest, ZeroRequestIsInvalid) {
     EXPECT_EQ(OrderOffset::INVALID, manager_.resolveCloseOffset(0, 0));
 }
 
+// A ticker id beyond ME_MAX_TICKERS has no position info and resolves to
+// INVALID.
 TEST_F(RiskManagerResolveCloseOffsetTest, OutOfRangeTickerIsInvalid) {
     EXPECT_EQ(OrderOffset::INVALID,
               manager_.resolveCloseOffset(Common::ME_MAX_TICKERS, 1));
@@ -158,6 +172,7 @@ class RiskManagerCloseableQuantityTest : public ::testing::Test {
     Trading::RiskManager manager_;
 };
 
+// OPEN and INVALID offsets are not close actions, so no quantity is closeable.
 TEST_F(RiskManagerCloseableQuantityTest, OpenAndInvalidOffsetsCloseNothing) {
     seed();
 
@@ -165,18 +180,22 @@ TEST_F(RiskManagerCloseableQuantityTest, OpenAndInvalidOffsetsCloseNothing) {
     EXPECT_EQ(0u, manager_.closeableQty(0, OrderOffset::INVALID));
 }
 
+// CLOSE_TODAY reports exactly the position opened today (2 of the 6 total).
 TEST_F(RiskManagerCloseableQuantityTest, CloseTodayReportsTheTodayQuantity) {
     seed();
 
     EXPECT_EQ(2u, manager_.closeableQty(0, OrderOffset::CLOSE_TODAY));
 }
 
+// CLOSE_YESTERDAY reports exactly the position carried from yesterday (4 of
+// the 6 total).
 TEST_F(RiskManagerCloseableQuantityTest, CloseYesterdayReportsTheYesterdayQuantity) {
     seed();
 
     EXPECT_EQ(4u, manager_.closeableQty(0, OrderOffset::CLOSE_YESTERDAY));
 }
 
+// The generic CLOSE offset reports the full position: today plus yesterday.
 TEST_F(RiskManagerCloseableQuantityTest, CloseReportsBothDaysSummed) {
     seed();
 

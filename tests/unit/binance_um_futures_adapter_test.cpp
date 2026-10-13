@@ -68,6 +68,11 @@ constexpr OrderRow kOrderRows[] = {
 
 class BinanceUmFuturesMapOrderTest : public ::testing::TestWithParam<OrderRow> {};
 
+// Table-driven: each NEW request must map to Binance parameters with the
+// symbol from the config, side/type/time-in-force per order type, and
+// reduce_only set exactly when the offset is a close offset; quantity and
+// price are serialized as strings and the order id becomes the client order
+// id.
 TEST_P(BinanceUmFuturesMapOrderTest, MapsTheRequestToBinanceParameters) {
     const auto& row = GetParam();
     const auto mapped = Trading::BinanceUmFuturesVenueAdapter::mapOrder(
@@ -90,6 +95,8 @@ INSTANTIATE_TEST_SUITE_P(TruthTable, BinanceUmFuturesMapOrderTest,
                              return info.param.label;
                          });
 
+// A request for a ticker the adapter is not configured for cannot be mapped
+// and must be rejected.
 TEST(BinanceUmFuturesMapOrderTest, WrongTickerIsRejected) {
     auto request = makeNewRequest(Side::BUY, OrderType::LIMIT, OrderOffset::OPEN, 1, 100);
     request.ticker_id_ = 1;
@@ -99,6 +106,8 @@ TEST(BinanceUmFuturesMapOrderTest, WrongTickerIsRejected) {
             std::invalid_argument);
 }
 
+// mapOrder only handles NEW requests; anything else (e.g. CANCEL) must be
+// rejected here.
 TEST(BinanceUmFuturesMapOrderTest, CancelRequestIsRejected) {
     auto request = makeNewRequest(Side::BUY, OrderType::LIMIT, OrderOffset::OPEN, 1, 100);
     request.type_ = Exchange::ClientRequestType::CANCEL;
@@ -108,6 +117,8 @@ TEST(BinanceUmFuturesMapOrderTest, CancelRequestIsRejected) {
             std::invalid_argument);
 }
 
+// An order type outside {LIMIT, MARKET} has no Binance equivalent and must
+// be rejected.
 TEST(BinanceUmFuturesMapOrderTest, UnsupportedOrderTypeIsRejected) {
     auto request =
             makeNewRequest(Side::BUY, OrderType::INVALID, OrderOffset::OPEN, 1, 100);
@@ -117,6 +128,8 @@ TEST(BinanceUmFuturesMapOrderTest, UnsupportedOrderTypeIsRejected) {
             std::invalid_argument);
 }
 
+// A sentinel (Qty_INVALID) quantity cannot be serialized and must be
+// rejected.
 TEST(BinanceUmFuturesMapOrderTest, InvalidQuantityIsRejected) {
     auto request = makeNewRequest(Side::BUY, OrderType::LIMIT, OrderOffset::OPEN,
                                   Common::Qty_INVALID, 100);
@@ -126,6 +139,7 @@ TEST(BinanceUmFuturesMapOrderTest, InvalidQuantityIsRejected) {
             std::invalid_argument);
 }
 
+// An INVALID side cannot be mapped to a Binance side and must be rejected.
 TEST(BinanceUmFuturesMapOrderTest, InvalidSideIsRejected) {
     auto request =
             makeNewRequest(Side::INVALID, OrderType::LIMIT, OrderOffset::OPEN, 1, 100);
@@ -154,6 +168,10 @@ constexpr StatusRow kStatusRows[] = {
 class BinanceUmFuturesMapOrderStatusTest
         : public ::testing::TestWithParam<StatusRow> {};
 
+// Table-driven: Binance order statuses map onto internal client response
+// types, FILLED is terminal filled, CANCELED/EXPIRED/EXPIRED_IN_MATCH are
+// terminal cancel, NEW/PARTIALLY_FILLED are still working (ACCEPTED), and
+// unknown statuses degrade to REJECTED.
 TEST_P(BinanceUmFuturesMapOrderStatusTest, MapsStatusToTheClientResponseType) {
     const auto& row = GetParam();
 
@@ -182,6 +200,8 @@ constexpr TimestampRow kTimestampRows[] = {
 class BinanceUmFuturesAdjustedTimestampTest
         : public ::testing::TestWithParam<TimestampRow> {};
 
+// Table-driven: the local timestamp is shifted by the measured server clock
+// offset (negative or positive) before being sent to the exchange.
 TEST_P(BinanceUmFuturesAdjustedTimestampTest, AddsTheServerOffsetToTheLocalTimestamp) {
     const auto& row = GetParam();
 

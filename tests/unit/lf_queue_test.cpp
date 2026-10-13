@@ -4,6 +4,8 @@
 
 namespace {
 
+// A freshly created queue reports size 0, its requested capacity, not full,
+// and no readable slot.
 TEST(LFQueueTest, EmptyQueueHasNoReadableSlot) {
     Common::LFQueue<int> queue(2);
 
@@ -13,6 +15,9 @@ TEST(LFQueueTest, EmptyQueueHasNoReadableSlot) {
     EXPECT_EQ(nullptr, queue.getNextToRead());
 }
 
+// The write/read handshake: each written slot (obtain write pointer, store,
+// updateWriteIndex) becomes readable in FIFO order via getNextToRead, and
+// updateReadIndex drains the queue back to size 0.
 TEST(LFQueueTest, WrittenSlotsAreReadableInFifoOrder) {
     Common::LFQueue<int> queue(2);
 
@@ -41,6 +46,8 @@ TEST(LFQueueTest, WrittenSlotsAreReadableInFifoOrder) {
     EXPECT_EQ(0u, queue.size());
 }
 
+// After filling every slot the queue reports full and refuses to hand out a
+// new write slot (nullptr) instead of wrapping onto unread data.
 TEST(LFQueueTest, FullQueueRejectsNewWriteSlots) {
     Common::LFQueue<int> queue(2);
 
@@ -53,6 +60,8 @@ TEST(LFQueueTest, FullQueueRejectsNewWriteSlots) {
     EXPECT_EQ(nullptr, queue.tryGetNextToWriteTo());
 }
 
+// Consuming a slot via updateReadIndex frees its capacity, so the producer
+// can write into it again (the ring wraps on a capacity-1 queue).
 TEST(LFQueueTest, ConsumedSlotsFreeCapacityForNewWrites) {
     Common::LFQueue<int> queue(1);
 
@@ -71,6 +80,7 @@ TEST(LFQueueTest, ConsumedSlotsFreeCapacityForNewWrites) {
     EXPECT_EQ(8, *queue.getNextToRead());
 }
 
+// Constructing a queue with zero capacity is a usage error and must throw.
 TEST(LFQueueTest, ZeroCapacityConstructionThrowsInvalidArgument) {
     EXPECT_THROW(Common::LFQueue<int> queue(0), std::invalid_argument);
 }
