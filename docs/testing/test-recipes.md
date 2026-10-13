@@ -24,9 +24,9 @@ names read as scenario-plus-expectation sentences.
 - Queue concurrency (`LFQueueSpscTest`, integration): single-producer/
   single-consumer stress conveys 10,000 messages in order under a bounded
   deadline.
-- Log writer (`LogWriterTest`, unit): fresh buffer empty, chained append
-  formatting, zero capacity drops, truncation at capacity, appends after
-  truncation dropped.
+- Message builder (`MessageBuilderTest`, unit): fresh buffer empty, chained
+  append formatting, zero capacity drops, truncation at capacity, appends
+  after truncation dropped.
 - Async logger (`AsyncLoggerTest`, integration): fixed-buffer formatting and
   truncation, per-producer files, overflow drops, late-registered producer
   visibility after start, worker-thread binding.
