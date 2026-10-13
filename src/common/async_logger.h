@@ -15,50 +15,13 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "common/lf_queue.h"
 
 namespace Common {
-
-/// A formatting cursor that appends text into fixed-capacity character
-/// storage without heap allocation. Appends past the capacity are dropped,
-/// so a formatted line is at most truncated, never overrun. Text is kept
-/// NUL-terminated after every append.
-class LogWriter final {
-  public:
-    LogWriter(char* storage, std::size_t capacity) noexcept
-            : storage_(storage), capacity_(capacity) {
-        storage_[0] = '\0';
-    }
-
-    auto append(std::string_view text) noexcept -> LogWriter& {
-        const auto remaining = capacity_ - 1 - used_;
-        const auto count = text.size() < remaining ? text.size() : remaining;
-        for (std::size_t i = 0; i < count; ++i) {
-            storage_[used_ + i] = text[i];
-        }
-        used_ += count;
-        storage_[used_] = '\0';
-        return *this;
-    }
-
-    template <typename Integral>
-        requires std::is_integral_v<Integral>
-    auto append(Integral value) noexcept -> LogWriter& {
-        char digits[24];
-        const auto result =
-                std::to_chars(digits, digits + sizeof(digits), value);
-        return append(std::string_view(
-                digits, static_cast<std::size_t>(result.ptr - digits)));
-    }
-
-  private:
-    char* storage_;
-    std::size_t capacity_;
-    std::size_t used_ = 0;
-};
 
 enum class LogLevel : std::uint8_t {
     DEBUG,
@@ -134,6 +97,47 @@ class AsyncLogger final {
             return *this;
         }
 
+        /// A formatting cursor that appends text into fixed-capacity
+        /// character storage without heap allocation. Appends past the
+        /// capacity are dropped, so a formatted line is at most truncated,
+        /// never overrun. Text is kept NUL-terminated after every append.
+        /// A MessageBuilder is created locally per logFixed() call; its
+        /// storage pointer, capacity, and cursor live here, not in the
+        /// ProducerHandle.
+        class MessageBuilder final {
+          public:
+            MessageBuilder(char* storage, std::size_t capacity) noexcept
+                    : storage_(storage), capacity_(capacity) {
+                storage_[0] = '\0';
+            }
+
+            auto append(std::string_view text) noexcept -> MessageBuilder& {
+                const auto remaining = capacity_ - 1 - used_;
+                const auto count = text.size() < remaining ? text.size() : remaining;
+                for (std::size_t i = 0; i < count; ++i) {
+                    storage_[used_ + i] = text[i];
+                }
+                used_ += count;
+                storage_[used_] = '\0';
+                return *this;
+            }
+
+            template <typename Integral>
+                requires std::is_integral_v<Integral>
+            auto append(Integral value) noexcept -> MessageBuilder& {
+                char digits[24];
+                const auto result =
+                        std::to_chars(digits, digits + sizeof(digits), value);
+                return append(std::string_view(
+                        digits, static_cast<std::size_t>(result.ptr - digits)));
+            }
+
+          private:
+            char* storage_;
+            std::size_t capacity_;
+            std::size_t used_ = 0;
+        };
+
         /// Copy a message into a queue slot in place, without building an
         /// intermediate record on the stack.
         auto log(LogLevel level, std::string_view message) noexcept -> void {
@@ -159,10 +163,10 @@ class AsyncLogger final {
         }
 
         /// Format a message directly into the fixed record storage. Unlike
-        /// log(), the formatter builds the text with a LogWriter instead of a
-        /// std::string, so the call performs no heap allocation. The
-        /// formatter runs synchronously on the calling thread and must not
-        /// retain the writer.
+        /// log(), the formatter builds the text with a MessageBuilder
+        /// instead of a std::string, so the call performs no heap
+        /// allocation. The formatter runs synchronously on the calling
+        /// thread and must not retain the builder.
         template <typename Formatter>
         auto logFixed(LogLevel level, Formatter&& formatter) noexcept -> void {
             if (state_ == nullptr) {
@@ -182,8 +186,8 @@ class AsyncLogger final {
                                         .count();
             slot->level = level;
             copyText(slot->component, state_->component);
-            LogWriter writer(slot->message.data(), kMessageCapacity);
-            formatter(writer);
+            MessageBuilder builder(slot->message.data(), kMessageCapacity);
+            formatter(builder);
             state_->queue.updateWriteIndex();
         }
 

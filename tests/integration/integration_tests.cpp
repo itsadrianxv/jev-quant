@@ -200,12 +200,12 @@ TEST(AsyncLoggerTest, WritesFixedBufferFormattedRecordsAndTruncatesOversizedOnes
     auto engine_log = logger.registerProducer("TradeEngine", "trade-engine.log");
     logger.start();
 
-    engine_log.logFixed(Common::LogLevel::INFO, [](Common::LogWriter& out) {
+    engine_log.logFixed(Common::LogLevel::INFO, [](auto& out) {
         out.append("event=client_response_consumed client_id=").append(7)
                 .append(" ticker_id=").append(0);
     });
     const std::string oversized(Common::AsyncLogger::kMessageCapacity + 32, 'x');
-    engine_log.logFixed(Common::LogLevel::WARN, [&](Common::LogWriter& out) {
+    engine_log.logFixed(Common::LogLevel::WARN, [&](auto& out) {
         out.append("fixed_prefix ").append(oversized);
     });
     logger.stop();

@@ -22,7 +22,7 @@ auto MarketDataConsumer::publishMarketUpdate(
     ++local_receive_seq_num_;
     if (log_handle_ && verbose_market_data_) {
         log_handle_->logFixed(Common::LogLevel::DEBUG,
-                              [&](Common::LogWriter& out) {
+                              [&](auto& out) {
                                   out.append("event=market_update_published client_id=")
                                           .append(client_id_)
                                           .append(" ticker_id=")
@@ -36,7 +36,7 @@ auto MarketDataConsumer::publishSequencedMarketUpdate(
     if (seq_num != next_expected_venue_seq_num_) {
         if (log_handle_) {
             log_handle_->logFixed(Common::LogLevel::ERROR,
-                                  [&](Common::LogWriter& out) {
+                                  [&](auto& out) {
                                       out.append("event=market_sequence_gap client_id=")
                                               .append(client_id_)
                                               .append(" expected=")

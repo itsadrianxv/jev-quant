@@ -81,7 +81,7 @@ auto TradeEngine::run() -> void {
         log_handle_.emplace(logger_->registerProducer(
                 "TradeEngine", "trade-engine-" + std::to_string(client_id_) + ".log"));
         log_handle_->bindToCurrentThread();
-        log_handle_->logFixed(Common::LogLevel::INFO, [this](Common::LogWriter& out) {
+        log_handle_->logFixed(Common::LogLevel::INFO, [this](auto& out) {
             out.append("event=component_started client_id=").append(client_id_);
         });
     }
@@ -91,7 +91,7 @@ auto TradeEngine::run() -> void {
         }
     }
     if (log_handle_) {
-        log_handle_->logFixed(Common::LogLevel::INFO, [this](Common::LogWriter& out) {
+        log_handle_->logFixed(Common::LogLevel::INFO, [this](auto& out) {
             out.append("event=component_stopped client_id=").append(client_id_);
         });
     }
@@ -101,7 +101,7 @@ auto TradeEngine::recordLatency(std::string_view event, std::uint64_t evaluation
                                 Common::TickerId ticker_id, std::uint64_t elapsed_ns)
         -> void {
     if (!ttt_handle_) return;
-    ttt_handle_->logFixed(Common::LogLevel::INFO, [&](Common::LogWriter& out) {
+    ttt_handle_->logFixed(Common::LogLevel::INFO, [&](auto& out) {
         out.append("event=").append(event)
                 .append(" evaluation_id=").append(evaluation_id)
                 .append(" ticker_id=").append(ticker_id)
@@ -112,7 +112,7 @@ auto TradeEngine::recordLatency(std::string_view event, std::uint64_t evaluation
 auto TradeEngine::recordDecisionDrop(std::string_view event,
                                      const JevDecision& decision) -> void {
     if (!ttt_handle_) return;
-    ttt_handle_->logFixed(Common::LogLevel::WARN, [&](Common::LogWriter& out) {
+    ttt_handle_->logFixed(Common::LogLevel::WARN, [&](auto& out) {
         out.append("event=").append(event)
                 .append(" evaluation_id=").append(decision.evaluation_id_)
                 .append(" ticker_id=").append(decision.ticker_id_);
@@ -137,7 +137,7 @@ auto TradeEngine::processClientResponses() -> bool {
         }
         if (log_handle_) {
             log_handle_->logFixed(Common::LogLevel::INFO,
-                                  [&](Common::LogWriter& out) {
+                                  [&](auto& out) {
                                       out.append("event=client_response_consumed client_id=")
                                               .append(client_id_)
                                               .append(" ticker_id=")
@@ -166,7 +166,7 @@ auto TradeEngine::processMarketUpdates() -> bool {
         if (log_handle_ && (verbose_market_data_ ||
                             update->type_ == Exchange::MarketUpdateType::DEPTH_SNAPSHOT)) {
             log_handle_->logFixed(Common::LogLevel::DEBUG,
-                                  [&](Common::LogWriter& out) {
+                                  [&](auto& out) {
                                       out.append("event=market_update_consumed client_id=")
                                               .append(client_id_)
                                               .append(" ticker_id=")
@@ -191,7 +191,7 @@ auto TradeEngine::processJevDecisions() -> bool {
         }
         if (log_handle_) {
             log_handle_->logFixed(Common::LogLevel::INFO,
-                                  [&](Common::LogWriter& out) {
+                                  [&](auto& out) {
                                       out.append("event=decision_consumed client_id=")
                                               .append(client_id_)
                                               .append(" evaluation_id=")
@@ -247,7 +247,7 @@ auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
                     latest_evaluation_ids_.at(decision.ticker_id_)) {
         if (log_handle_) {
             log_handle_->logFixed(Common::LogLevel::WARN,
-                                  [&](Common::LogWriter& out) {
+                                  [&](auto& out) {
                                       out.append("event=stale_decision_dropped client_id=")
                                               .append(client_id_)
                                               .append(" evaluation_id=")
@@ -368,7 +368,7 @@ auto TradeEngine::scheduleJevEvaluation() -> bool {
     outgoing_jev_evaluations_->updateWriteIndex();
     if (log_handle_) {
         log_handle_->logFixed(Common::LogLevel::INFO,
-                              [&](Common::LogWriter& out) {
+                              [&](auto& out) {
                                   out.append("event=evaluation_enqueued client_id=")
                                           .append(client_id_)
                                           .append(" evaluation_id=")
@@ -442,7 +442,7 @@ auto TradeEngine::sendClientRequest(const Exchange::ClientRequest& request)
     outgoing_requests_->updateWriteIndex();
     if (log_handle_) {
         log_handle_->logFixed(Common::LogLevel::INFO,
-                              [&](Common::LogWriter& out) {
+                              [&](auto& out) {
                                   out.append("event=client_request_enqueued client_id=")
                                           .append(client_id_)
                                           .append(" ticker_id=")

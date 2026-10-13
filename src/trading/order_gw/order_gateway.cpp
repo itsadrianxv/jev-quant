@@ -32,7 +32,7 @@ auto OrderGateway::run() -> void {
         log_handle_.emplace(logger_->registerProducer(
                 "OrderGateway", "order-gateway-" + std::to_string(client_id_) + ".log"));
         log_handle_->bindToCurrentThread();
-        log_handle_->logFixed(Common::LogLevel::INFO, [this](Common::LogWriter& out) {
+        log_handle_->logFixed(Common::LogLevel::INFO, [this](auto& out) {
             out.append("event=component_started client_id=").append(client_id_);
         });
     }
@@ -43,7 +43,7 @@ auto OrderGateway::run() -> void {
         }
     }
     if (log_handle_) {
-        log_handle_->logFixed(Common::LogLevel::INFO, [this](Common::LogWriter& out) {
+        log_handle_->logFixed(Common::LogLevel::INFO, [this](auto& out) {
             out.append("event=component_stopped client_id=").append(client_id_);
         });
     }
@@ -59,7 +59,7 @@ auto OrderGateway::processPending() -> bool {
         const auto sequence = next_outgoing_seq_num_++;
         if (log_handle_) {
             log_handle_->logFixed(Common::LogLevel::INFO,
-                                  [&](Common::LogWriter& out) {
+                                  [&](auto& out) {
                                       out.append("event=client_request_consumed client_id=")
                                               .append(client_id_)
                                               .append(" sequence=")
@@ -86,7 +86,7 @@ auto OrderGateway::publishClientResponse(
     if (seq_num != next_exp_seq_num_) {
         if (log_handle_) {
             log_handle_->logFixed(Common::LogLevel::ERROR,
-                                  [&](Common::LogWriter& out) {
+                                  [&](auto& out) {
                                       out.append("event=response_sequence_gap client_id=")
                                               .append(client_id_)
                                               .append(" expected=")
@@ -108,7 +108,7 @@ auto OrderGateway::publishClientResponse(
     ++next_exp_seq_num_;
     if (log_handle_) {
         log_handle_->logFixed(Common::LogLevel::INFO,
-                              [&](Common::LogWriter& out) {
+                              [&](auto& out) {
                                   out.append("event=client_response_published client_id=")
                                           .append(client_id_)
                                           .append(" sequence=")
