@@ -15,15 +15,16 @@ TradeEngine::TradeEngine(
         Exchange::ClientResponseLFQueue* incoming_responses,
         Exchange::MarketUpdateLFQueue* incoming_market_updates,
         JevDecisionLFQueue* incoming_jev_decisions,
-        Common::AsyncLogger* logger)
-        : client_id_(client_id),
+        std::optional<Common::AsyncLogger::ProducerHandle> log_handle,
+        std::optional<Common::AsyncLogger::ProducerHandle> ttt_handle)
+        : ttt_handle_(std::move(ttt_handle)), client_id_(client_id),
             position_keeper_(),
             risk_manager_(&position_keeper_, risk_limits),
             order_manager_(client_id_, this, &risk_manager_),
             outgoing_requests_(outgoing_requests),
             incoming_responses_(incoming_responses),
             incoming_market_updates_(incoming_market_updates),
-            incoming_jev_decisions_(incoming_jev_decisions), logger_(logger) {
+            incoming_jev_decisions_(incoming_jev_decisions), log_handle_(std::move(log_handle)) {
     if (outgoing_requests_ == nullptr || incoming_responses_ == nullptr ||
             incoming_market_updates_ == nullptr || incoming_jev_decisions_ == nullptr) {
         throw std::invalid_argument("TradeEngine queues must not be null");
@@ -33,13 +34,6 @@ TradeEngine::TradeEngine(
               ticker_id < Common::ME_MAX_TICKERS; ++ticker_id) {
         ticker_order_books_[ticker_id] =
                 std::make_unique<MarketOrderBook>(ticker_id);
-    }
-    if (logger_ != nullptr) {
-        // Registered at construction so records are emitted even when the
-        // engine is driven synchronously through processPending() without a
-        // worker thread. The handle binds to the calling thread on first use.
-        ttt_handle_.emplace(logger_->registerProducer(
-                "TTT", "ttt-" + std::to_string(client_id_) + ".log"));
     }
     next_jev_evaluation_at_ = std::chrono::steady_clock::now();
 }
@@ -77,9 +71,7 @@ auto TradeEngine::stop() -> void {
 }
 
 auto TradeEngine::run() -> void {
-    if (logger_ != nullptr) {
-        log_handle_.emplace(logger_->registerProducer(
-                "TradeEngine", "trade-engine-" + std::to_string(client_id_) + ".log"));
+    if (log_handle_) {
         log_handle_->bindToCurrentThread();
         log_handle_->logFixed(Common::LogLevel::INFO, [this](auto& out) {
             out.append("event=component_started client_id=").append(client_id_);

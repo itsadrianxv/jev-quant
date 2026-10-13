@@ -250,14 +250,13 @@ auto lowerSymbol(std::string symbol) -> std::string {
 
 BinanceUmFuturesVenueAdapter::BinanceUmFuturesVenueAdapter(
         MarketDataConsumer* market_data, OrderGateway* order_gateway,
-        BinanceUmFuturesConfig config, Common::AsyncLogger* logger)
+        BinanceUmFuturesConfig config,
+        std::optional<Common::AsyncLogger::ProducerHandle> log_handle)
     : market_data_(market_data), order_gateway_(order_gateway),
-      config_(std::move(config)) {
-    if (logger != nullptr) {
-        log_handle_.emplace(logger->registerProducer(
-                "Venue", "venue-" + std::to_string(config_.ticker_id) + ".log"));
-        log_handle_->bindToCurrentThread();
-    }
+      config_(std::move(config)), log_handle_(std::move(log_handle)) {}
+
+BinanceUmFuturesVenueAdapter::~BinanceUmFuturesVenueAdapter() {
+    stop();
 }
 
 auto BinanceUmFuturesVenueAdapter::loadConfigFromEnv(
@@ -335,6 +334,7 @@ auto BinanceUmFuturesVenueAdapter::adjustedTimestamp(
 }
 
 auto BinanceUmFuturesVenueAdapter::start() -> void {
+    lifecycle_started_ = true;
     if (log_handle_) {
         log_handle_->log(Common::LogLevel::INFO, "event=component_started");
     }
@@ -360,12 +360,8 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
     depth_stream_ = std::make_unique<BinanceWebSocketStream>(
             "/ws/" + lowerSymbol(config_.symbol) + "@depth@100ms",
             [this](const nlohmann::json& message) {
-                std::scoped_lock lock(book_mutex_);
-                depth_book_.onDepthEvent(message);
-                if (depth_book_.snapshotReady()) {
-                    market_data_->publishMarketUpdate(
-                            depth_book_.buildMarketUpdate(config_.ticker_id));
-                }
+                *depth_events_.getNextToWriteTo() = message;
+                depth_events_.updateWriteIndex();
             },
             [this](const std::string& error) {
                 running_.store(false, std::memory_order_release);
@@ -379,56 +375,15 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
     }
     reportStartupStage("depth_snapshot");
     const auto depth = fetchDepth(config_.symbol);
-    {
-        std::scoped_lock lock(book_mutex_);
-        depth_book_.installSnapshot(depth);
-        market_data_->publishMarketUpdate(
-                depth_book_.buildMarketUpdate(config_.ticker_id));
-    }
+    depth_book_.installSnapshot(depth);
+    snapshot_pending_ = true;
     reportStartupStage("listen_key");
     listen_key_ = createListenKey(config_);
     user_stream_ = std::make_unique<BinanceWebSocketStream>(
             "/ws/" + listen_key_,
             [this](const nlohmann::json& message) {
-                const auto event = message.value("e", "");
-                if (event == "listenKeyExpired") {
-                    running_.store(false, std::memory_order_release);
-                    std::terminate();
-                }
-                if (event == "ORDER_TRADE_UPDATE") {
-                    const auto& order = message.at("o");
-                    const auto client_order_id = static_cast<Common::OrderId>(
-                            std::stoull(order.value("c", "0")));
-                    const auto found = live_orders_.find(client_order_id);
-                    if (found == live_orders_.end()) return;
-                    const auto cumulative = static_cast<Common::Qty>(
-                            std::stod(order.value("z", "0")));
-                    auto& previous = cumulative_exec_qty_[client_order_id];
-                    if (cumulative <= previous) return;
-                    previous = cumulative;
-                    Exchange::ClientResponse response;
-                    response.type_ = mapOrderStatus(order.value("X", "NEW"));
-                    response.client_id_ = found->second.client_id_;
-                    response.ticker_id_ = found->second.ticker_id_;
-                    response.client_order_id_ = client_order_id;
-                    response.venue_order_id_ = order.value("i", Common::OrderId_INVALID);
-                    response.side_ = found->second.side_;
-                    response.price_ = found->second.price_;
-                    response.exec_qty_ = cumulative;
-                    response.leaves_qty_ = found->second.qty_ > cumulative
-                            ? found->second.qty_ - cumulative : 0;
-                    response.order_type_ = found->second.order_type_;
-                    response.offset_ = found->second.offset_;
-                    order_gateway_->publishClientResponse(
-                            order_gateway_->nextExpectedResponseSequence(), response);
-                    if (response.type_ == Exchange::ClientResponseType::FILLED ||
-                        response.type_ == Exchange::ClientResponseType::CANCELED ||
-                        response.type_ == Exchange::ClientResponseType::REJECTED) {
-                        live_orders_.erase(found);
-                    }
-                    return;
-                }
-                if (event == "ACCOUNT_UPDATE") { account_state_ = message; return; }
+                *user_events_.getNextToWriteTo() = message;
+                user_events_.updateWriteIndex();
             },
             [this](const std::string&) {
                 running_.store(false, std::memory_order_release);
@@ -458,27 +413,91 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
             [this](std::size_t sequence, const Exchange::ClientRequest& request) {
                 handleRequest(sequence, request);
             });
+    order_gateway_->setPollHandler([this] { poll(); });
     order_gateway_->start();
-    market_data_->start();
     running_.store(true, std::memory_order_release);
     if (log_handle_) log_handle_->log(Common::LogLevel::INFO, "event=component_ready");
 }
 
 auto BinanceUmFuturesVenueAdapter::stop() -> void {
-    if (log_handle_) {
+    if (lifecycle_started_ && log_handle_) {
         log_handle_->log(Common::LogLevel::INFO, "event=component_stopped");
     }
+    lifecycle_started_ = false;
     running_.store(false, std::memory_order_release);
     if (depth_stream_ != nullptr) depth_stream_->stop();
     if (user_stream_ != nullptr) user_stream_->stop();
     keepalive_running_.store(false, std::memory_order_release);
     if (keepalive_thread_.joinable()) keepalive_thread_.join();
-    if (market_data_ != nullptr) market_data_->stop();
     if (order_gateway_ != nullptr) order_gateway_->stop();
+    if (market_data_ != nullptr) market_data_->stop();
 }
 
 auto BinanceUmFuturesVenueAdapter::running() const noexcept -> bool {
     return running_.load(std::memory_order_acquire);
+}
+
+// The gateway worker owns publication and its log handles. WebSocket workers
+// only enqueue events, so startup snapshots and live updates share one producer.
+auto BinanceUmFuturesVenueAdapter::poll() -> void {
+    if (snapshot_pending_) {
+        market_data_->start();
+        market_data_->publishMarketUpdate(depth_book_.buildMarketUpdate(config_.ticker_id));
+        snapshot_pending_ = false;
+    }
+    while (const auto* message = depth_events_.getNextToRead()) {
+        depth_book_.onDepthEvent(*message);
+        if (depth_book_.snapshotReady()) {
+            market_data_->publishMarketUpdate(depth_book_.buildMarketUpdate(config_.ticker_id));
+        }
+        depth_events_.updateReadIndex();
+    }
+    while (const auto* message = user_events_.getNextToRead()) {
+        handleUserEvent(*message);
+        user_events_.updateReadIndex();
+    }
+}
+
+auto BinanceUmFuturesVenueAdapter::handleUserEvent(const nlohmann::json& message) -> void {
+    const auto event = message.value("e", "");
+    if (event == "listenKeyExpired") {
+        running_.store(false, std::memory_order_release);
+        std::terminate();
+    }
+    if (event == "ORDER_TRADE_UPDATE") {
+        const auto& order = message.at("o");
+        const auto client_order_id = static_cast<Common::OrderId>(
+                std::stoull(order.value("c", "0")));
+        const auto found = live_orders_.find(client_order_id);
+        if (found == live_orders_.end()) return;
+        const auto cumulative = static_cast<Common::Qty>(
+                std::stod(order.value("z", "0")));
+        auto& previous = cumulative_exec_qty_[client_order_id];
+        if (cumulative <= previous) return;
+        previous = cumulative;
+        Exchange::ClientResponse response;
+        response.type_ = mapOrderStatus(order.value("X", "NEW"));
+        response.client_id_ = found->second.client_id_;
+        response.ticker_id_ = found->second.ticker_id_;
+        response.client_order_id_ = client_order_id;
+        response.venue_order_id_ = order.value("i", Common::OrderId_INVALID);
+        response.side_ = found->second.side_;
+        response.price_ = found->second.price_;
+        response.exec_qty_ = cumulative;
+        response.leaves_qty_ = found->second.qty_ > cumulative
+                ? found->second.qty_ - cumulative : 0;
+        response.order_type_ = found->second.order_type_;
+        response.offset_ = found->second.offset_;
+        order_gateway_->publishClientResponse(
+                order_gateway_->nextExpectedResponseSequence(), response);
+        if (response.type_ == Exchange::ClientResponseType::FILLED ||
+            response.type_ == Exchange::ClientResponseType::CANCELED ||
+            response.type_ == Exchange::ClientResponseType::REJECTED) {
+            live_orders_.erase(found);
+        }
+        return;
+    }
+    if (event == "ACCOUNT_UPDATE") { account_state_ = message; return; }
 }
 
 auto BinanceUmFuturesVenueAdapter::handleRequest(
@@ -502,7 +521,7 @@ auto BinanceUmFuturesVenueAdapter::handleRequest(
             mapped.leaves_qty_ = request.qty_;
             mapped.order_type_ = request.order_type_;
             mapped.offset_ = request.offset_;
-            order_gateway_->publishClientResponse(sequence, mapped);
+            order_gateway_->publishClientResponse(order_gateway_->nextExpectedResponseSequence(), mapped);
             return;
         }
         const auto order = mapOrder(request, config_);
@@ -530,14 +549,14 @@ auto BinanceUmFuturesVenueAdapter::handleRequest(
         mapped.order_type_ = request.order_type_;
         mapped.offset_ = request.offset_;
         live_orders_[request.order_id_] = request;
-        order_gateway_->publishClientResponse(sequence, mapped);
+        order_gateway_->publishClientResponse(order_gateway_->nextExpectedResponseSequence(), mapped);
     } catch (const std::exception& error) {
         publishRejected(sequence, request, error.what());
     }
 }
 
 auto BinanceUmFuturesVenueAdapter::publishRejected(
-        std::size_t sequence, const Exchange::ClientRequest& request,
+        std::size_t, const Exchange::ClientRequest& request,
         const std::string&) -> void {
     Exchange::ClientResponse response;
     response.type_ = request.type_ == Exchange::ClientRequestType::CANCEL
@@ -552,7 +571,7 @@ auto BinanceUmFuturesVenueAdapter::publishRejected(
     response.leaves_qty_ = request.qty_;
     response.order_type_ = request.order_type_;
     response.offset_ = request.offset_;
-    order_gateway_->publishClientResponse(sequence, response);
+    order_gateway_->publishClientResponse(order_gateway_->nextExpectedResponseSequence(), response);
 }
 
 }  // namespace Trading

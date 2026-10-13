@@ -30,6 +30,12 @@ names read as scenario-plus-expectation sentences.
 - Async logger (`AsyncLoggerTest`, integration): fixed-buffer formatting and
   truncation, per-producer files, overflow drops, late-registered producer
   visibility after start, worker-thread binding.
+- Component logging (`ComponentLoggingTest`, integration): externally registered
+  handles transferred into worker components, lifecycle file routing, deferred
+  market publisher binding, Binance construction without binding, separate
+  ordinary/TTT worker channels, explicit disabled handles, and offline Binance
+  snapshot/depth/fill/rejection publication on the gateway thread. See
+  [component logging](../component-logging.md) for ownership and lifetime rules.
 - Memory pool (`MemPoolTest`, `MemPoolPlacementTest`, unit): distinct block
   handout, LIFO reuse, value-initialization on revive, zero capacity throws,
   placement-new argument forwarding, reallocation resets.

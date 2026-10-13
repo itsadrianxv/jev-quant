@@ -28,8 +28,7 @@ auto JevWorker::stop() -> void {
 }
 
 auto JevWorker::run() -> void {
-    if (logger_ != nullptr) {
-        log_handle_.emplace(logger_->registerProducer("JevWorker", "jev-worker.log"));
+    if (log_handle_) {
         log_handle_->bindToCurrentThread();
         log_handle_->log(Common::LogLevel::INFO, "event=component_started");
     }

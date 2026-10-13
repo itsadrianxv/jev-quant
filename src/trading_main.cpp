@@ -93,9 +93,11 @@ int main(int argc, char** argv) {
             throw std::runtime_error("SimNow v1 requires one-contract limits, no monetary stop, and a positive evaluation interval");
         std::atomic<std::uint64_t> valid_decisions{0}, executions{0};
         std::atomic<bool> market_ready{false};
-        Trading::TradeEngine engine(client_id, limits, &client_requests,
-                                                                &client_responses, &market_updates, &decisions,
-                                                                &logger);
+        Trading::TradeEngine engine(
+                client_id, limits, &client_requests, &client_responses,
+                &market_updates, &decisions,
+                logger.registerProducer("TradeEngine", "trade-engine-" + std::to_string(client_id) + ".log"),
+                logger.registerProducer("TTT", "ttt-" + std::to_string(client_id) + ".log"));
         engine.setDecisionOrderQuantity(order_qty);
         engine.setVerboseMarketData(verbose_market_data);
         if (simnow) engine.enableSingleOrderVenue();
@@ -130,14 +132,16 @@ int main(int argc, char** argv) {
         engine.attachJevEvaluationQueue(&evaluations,
                                                                           std::chrono::milliseconds(interval_ms), ticker_id);
 
-        Trading::MarketDataConsumer market_data(client_id, &market_updates, &logger,
-                                                 verbose_market_data);
+        Trading::MarketDataConsumer market_data(client_id, &market_updates,
+                logger.registerProducer("MarketData", "market-data-" + std::to_string(client_id) + ".log"),
+                verbose_market_data);
         Trading::OrderGateway order_gateway(client_id, &client_requests, &client_responses,
-                                             &logger);
+                logger.registerProducer("OrderGateway", "order-gateway-" + std::to_string(client_id) + ".log"));
         std::unique_ptr<Trading::VenueAdapter> venue;
         if (venue_type == "binance") {
             auto config = Trading::BinanceUmFuturesVenueAdapter::loadConfigFromEnv(".env", ticker_id);
-            venue = std::make_unique<Trading::BinanceUmFuturesVenueAdapter>(&market_data, &order_gateway, std::move(config), &logger);
+            venue = std::make_unique<Trading::BinanceUmFuturesVenueAdapter>(&market_data, &order_gateway, std::move(config),
+                    logger.registerProducer("Venue", "venue-" + std::to_string(ticker_id) + ".log"));
         } else if (simnow) {
 #ifdef JEV_ENABLE_SIMNOW
             venue = std::make_unique<Trading::SimNowVenueAdapter>(&market_data, &order_gateway,
@@ -158,7 +162,8 @@ int main(int argc, char** argv) {
         } else throw std::runtime_error("Unknown venue type");
         auto jev_config = Trading::loadJevHttpConfig(".env", config_path);
         Trading::JevHttpClient jev_client(std::move(jev_config));
-        Trading::JevWorker jev_worker(&evaluations, &decisions, &jev_client, &logger);
+        Trading::JevWorker jev_worker(&evaluations, &decisions, &jev_client,
+                logger.registerProducer("JevWorker", "jev-worker.log"));
         jev_worker.setEvaluationFilter([&](const auto& state) { return engine.acceptsEvaluation(state); });
 
         std::signal(SIGINT, onSignal);

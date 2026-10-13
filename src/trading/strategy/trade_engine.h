@@ -11,6 +11,7 @@
 #include <string_view>
 #include <thread>
 #include <optional>
+#include <utility>
 #include <mutex>
 
 #include "common/async_logger.h"
@@ -37,12 +38,14 @@ class TradeEngine final {
             std::function<void(const Exchange::MarketUpdate&, const MarketOrderBook&)>;
     using JevDecisionHandler = std::function<void(const JevDecision&)>;
 
+    /// Transfer unbound handles; the owning logger must outlive this component.
     TradeEngine(Common::ClientId client_id, RiskLimits risk_limits,
                             Exchange::ClientRequestLFQueue* outgoing_requests,
                             Exchange::ClientResponseLFQueue* incoming_responses,
                             Exchange::MarketUpdateLFQueue* incoming_market_updates,
                             JevDecisionLFQueue* incoming_jev_decisions,
-                            Common::AsyncLogger* logger = nullptr);
+                            std::optional<Common::AsyncLogger::ProducerHandle> log_handle = std::nullopt,
+                            std::optional<Common::AsyncLogger::ProducerHandle> ttt_handle = std::nullopt);
 
     TradeEngine(Exchange::ClientRequestLFQueue* outgoing_requests,
                             Exchange::ClientResponseLFQueue* incoming_responses,
@@ -185,7 +188,6 @@ class TradeEngine final {
 
     std::atomic<bool> running_{false};
     std::jthread worker_;
-    Common::AsyncLogger* logger_ = nullptr;
     std::optional<Common::AsyncLogger::ProducerHandle> log_handle_;
     bool verbose_market_data_ = false;
     bool simex_constraints_ = false;

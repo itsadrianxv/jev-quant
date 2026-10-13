@@ -28,9 +28,7 @@ auto OrderGateway::stop() -> void {
 }
 
 auto OrderGateway::run() -> void {
-    if (logger_ != nullptr) {
-        log_handle_.emplace(logger_->registerProducer(
-                "OrderGateway", "order-gateway-" + std::to_string(client_id_) + ".log"));
+    if (log_handle_) {
         log_handle_->bindToCurrentThread();
         log_handle_->logFixed(Common::LogLevel::INFO, [this](auto& out) {
             out.append("event=component_started client_id=").append(client_id_);

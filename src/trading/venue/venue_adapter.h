@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <thread>
 #include <nlohmann/json.hpp>
 #include "trading/venue/binance_depth_book.h"
@@ -13,6 +12,7 @@
 #include <string>
 #include <unordered_map>
 #include <optional>
+#include <utility>
 
 #include "common/async_logger.h"
 #include "trading/market_data/market_data_consumer.h"
@@ -50,10 +50,13 @@ struct BinanceOrderParameters {
 
 class BinanceUmFuturesVenueAdapter final : public VenueAdapter {
   public:
+    /// Transfer unbound handles; the owning logger must outlive this component.
     BinanceUmFuturesVenueAdapter(MarketDataConsumer* market_data,
                                  OrderGateway* order_gateway,
                                  BinanceUmFuturesConfig config,
-                                 Common::AsyncLogger* logger = nullptr);
+                                 std::optional<Common::AsyncLogger::ProducerHandle> log_handle = std::nullopt);
+
+    ~BinanceUmFuturesVenueAdapter() override;
 
     BinanceUmFuturesVenueAdapter(const BinanceUmFuturesVenueAdapter&) = delete;
     BinanceUmFuturesVenueAdapter& operator=(const BinanceUmFuturesVenueAdapter&) = delete;
@@ -75,6 +78,10 @@ class BinanceUmFuturesVenueAdapter final : public VenueAdapter {
             -> std::int64_t;
 
   private:
+    friend class BinanceVenueHarness;
+
+    auto poll() -> void;
+    auto handleUserEvent(const nlohmann::json& message) -> void;
     auto handleRequest(std::size_t sequence,
                        const Exchange::ClientRequest& request) -> void;
     auto publishRejected(std::size_t sequence,
@@ -85,6 +92,7 @@ class BinanceUmFuturesVenueAdapter final : public VenueAdapter {
     OrderGateway* order_gateway_ = nullptr;
     BinanceUmFuturesConfig config_{};
     std::atomic<bool> running_{false};
+    bool lifecycle_started_ = false;
     std::int64_t server_time_offset_ms_ = 0;
     std::unique_ptr<BinanceWebSocketStream> depth_stream_;
     std::unique_ptr<BinanceWebSocketStream> user_stream_;
@@ -93,7 +101,11 @@ class BinanceUmFuturesVenueAdapter final : public VenueAdapter {
     std::jthread keepalive_thread_;
     nlohmann::json account_state_;
     BinanceDepthBook depth_book_;
-    std::mutex book_mutex_;
+    // Each WebSocket worker has its own SPSC queue to the gateway worker.
+    // TODO: Decode directly into typed events to avoid copying JSON payloads.
+    Common::LFQueue<nlohmann::json> depth_events_{1024};
+    Common::LFQueue<nlohmann::json> user_events_{1024};
+    bool snapshot_pending_ = false;
     std::unordered_map<Common::OrderId, Exchange::ClientRequest> live_orders_;
     std::unordered_map<Common::OrderId, Common::Qty> cumulative_exec_qty_;
     std::optional<Common::AsyncLogger::ProducerHandle> log_handle_;

@@ -188,9 +188,10 @@ int main(int argc, char** argv) {
         logger.start();
         Trading::TradeEngine engine(
                 1, Trading::RiskLimits{10, 10, 0.0}, &requests, &responses,
-                &market_updates, &decisions, &logger);
+                &market_updates, &decisions, std::nullopt,
+                logger.registerProducer("TTT", "ttt-1.log"));
         engine.attachJevEvaluationQueue(&evaluations, std::chrono::milliseconds(0), 0);
-        Trading::OrderGateway gateway(1, &requests, &responses, &logger);
+        Trading::OrderGateway gateway(1, &requests, &responses);
         SyntheticVenue venue;
         gateway.setRequestHandler([&](std::size_t sequence,
                                                                     const Exchange::ClientRequest& request) {

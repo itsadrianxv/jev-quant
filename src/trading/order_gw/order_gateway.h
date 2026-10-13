@@ -25,13 +25,14 @@ class OrderGateway final {
     using RequestHandler =
             std::function<void(std::size_t, const Exchange::ClientRequest&)>;
 
+    /// Transfer unbound handles; the owning logger must outlive this component.
     OrderGateway(Common::ClientId client_id,
                               Exchange::ClientRequestLFQueue* client_requests,
                               Exchange::ClientResponseLFQueue* client_responses,
-                              Common::AsyncLogger* logger = nullptr)
+                              std::optional<Common::AsyncLogger::ProducerHandle> log_handle = std::nullopt)
             : client_id_(client_id),
                 outgoing_requests_(client_requests),
-                incoming_responses_(client_responses), logger_(logger) {}
+                incoming_responses_(client_responses), log_handle_(std::move(log_handle)) {}
 
     ~OrderGateway();
 
@@ -81,7 +82,6 @@ class OrderGateway final {
     std::function<void()> poll_handler_;
     std::atomic<bool> running_{false};
     std::jthread worker_;
-    Common::AsyncLogger* logger_ = nullptr;
     std::optional<Common::AsyncLogger::ProducerHandle> log_handle_;
     std::size_t next_outgoing_seq_num_ = 1;
     std::size_t next_exp_seq_num_ = 1;

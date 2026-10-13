@@ -3,6 +3,7 @@
 #include <atomic>
 #include <thread>
 #include <optional>
+#include <utility>
 #include <functional>
 
 #include "common/async_logger.h"
@@ -39,13 +40,14 @@ class MockJevDecisionProvider final : public JevDecisionProvider {
 
 class JevWorker final {
   public:
+    /// Transfer unbound handles; the owning logger must outlive this component.
     JevWorker(JevEvaluationStateLFQueue* incoming_states,
                         JevDecisionLFQueue* outgoing_decisions,
                         JevDecisionProvider* provider,
-                        Common::AsyncLogger* logger = nullptr)
+                        std::optional<Common::AsyncLogger::ProducerHandle> log_handle = std::nullopt)
             : incoming_states_(incoming_states),
                 outgoing_decisions_(outgoing_decisions),
-                provider_(provider), logger_(logger) {}
+                provider_(provider), log_handle_(std::move(log_handle)) {}
 
     ~JevWorker();
 
@@ -81,7 +83,6 @@ class JevWorker final {
     std::atomic<bool> running_{false};
     std::atomic<std::uint64_t> failure_count_{0};
     std::jthread worker_;
-    Common::AsyncLogger* logger_ = nullptr;
     std::optional<Common::AsyncLogger::ProducerHandle> log_handle_;
 };
 

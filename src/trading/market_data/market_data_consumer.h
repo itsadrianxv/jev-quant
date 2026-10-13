@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cstddef>
 #include <optional>
+#include <utility>
 
 #include "common/async_logger.h"
 #include "common/lf_queue.h"
@@ -18,11 +19,12 @@ namespace Trading {
 /// replay and simulated venues can exercise the same queue contract.
 class MarketDataConsumer final {
   public:
+    /// Transfer unbound handles; the owning logger must outlive this component.
     MarketDataConsumer(Common::ClientId client_id,
                                           Exchange::MarketUpdateLFQueue* market_updates,
-                                          Common::AsyncLogger* logger = nullptr,
+                                          std::optional<Common::AsyncLogger::ProducerHandle> log_handle = std::nullopt,
                                           bool verbose_market_data = false)
-            : client_id_(client_id), market_updates_(market_updates), logger_(logger),
+            : client_id_(client_id), market_updates_(market_updates), log_handle_(std::move(log_handle)),
               verbose_market_data_(verbose_market_data) {}
 
     MarketDataConsumer(const MarketDataConsumer&) = delete;
@@ -31,13 +33,6 @@ class MarketDataConsumer final {
     MarketDataConsumer& operator=(MarketDataConsumer&&) = delete;
 
     auto start() -> void {
-        if (logger_ != nullptr && !log_handle_) {
-            log_handle_.emplace(logger_->registerProducer(
-                    "MarketData", "market-data-" + std::to_string(client_id_) + ".log"));
-            log_handle_->bindToCurrentThread();
-            log_handle_->log(Common::LogLevel::INFO,
-                             "event=component_started client_id=" + std::to_string(client_id_));
-        }
         running_.store(true, std::memory_order_release);
     }
     auto stop() noexcept -> void { running_.store(false, std::memory_order_release); }
@@ -66,12 +61,13 @@ class MarketDataConsumer final {
     }
 
   private:
+    auto ensureLoggingStarted() -> void;
+    bool logging_started_ = false;
     const Common::ClientId client_id_ = Common::ClientId_INVALID;
     Exchange::MarketUpdateLFQueue* market_updates_ = nullptr;
     std::atomic<bool> running_{false};
     std::size_t local_receive_seq_num_ = 0;
     std::size_t next_expected_venue_seq_num_ = 1;
-    Common::AsyncLogger* logger_ = nullptr;
     std::optional<Common::AsyncLogger::ProducerHandle> log_handle_;
     bool verbose_market_data_ = false;
 };
