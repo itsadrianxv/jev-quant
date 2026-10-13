@@ -200,7 +200,7 @@ jev_add_gtest_test(unit_tests LABEL unit
         SOURCES tests/unit/position_keeper_test.cpp
                 tests/unit/risk_manager_test.cpp
 tests/unit/lf_queue_test.cpp
-                tests/unit/log_writer_test.cpp
+                tests/unit/message_builder_test.cpp
                 tests/unit/mem_pool_test.cpp
                 tests/unit/market_order_book_test.cpp
                 tests/unit/binance_depth_book_test.cpp
