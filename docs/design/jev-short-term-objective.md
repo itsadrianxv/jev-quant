@@ -2,15 +2,15 @@
 
 ## Approved policy
 
-Seek short-term profit over an intended holding horizon of 1–5 minutes. Modest opportunities supported by limited information are sufficient; strong evidence is not required. Consider the bid–ask spread. Hold when no worthwhile opportunity is apparent. The horizon is a planning target, not a timed exit rule: evaluation state has no entry timestamp.
+Prioritize active trading for short-term profit over an intended holding horizon of 1–5 minutes. Favor opening on modest evidence when flat, adding exposure when favorable, and reducing exposure when exiting is preferable. When trading and holding appear similarly attractive, prefer the supported trading action. Reserve hold for opportunities outweighed by the bid–ask spread, binding risk limits, or insufficient information to support an action. The horizon is a planning target, not a timed exit rule: evaluation state has no entry timestamp.
 
 Use the provider's choice without probability thresholds or local decision overrides. A directional preference alone does not justify opening. Reduce an existing position when exiting is preferable to continuing exposure, including at a loss. Retain the existing option sets and all open, hold, long, and short descriptions.
 
-Only bias instructions, intent instructions, and the close description change. Keep simex, evaluation state, risk checks, order sizing, execution, and provider failure semantics unchanged. This reversible policy adjustment does not establish that the market offers profitable opportunities or guarantee more trades.
+The 2026-10-14 revision changes only intent instructions; bias instructions and option descriptions retain their previous wording. Keep simex, evaluation state, risk checks, order sizing, execution, and provider failure semantics unchanged. This reversible policy adjustment does not establish that the market offers profitable opportunities or guarantee more trades.
 
 ## Validation
 
-Run request contract tests and the full WSL Debug/Release cold builds and CTest suites. Tests pin the approved English wording and preserve flat versus occupied position options.
+Run request contract tests and the full WSL Debug/Release cold builds and CTest suites. Tests cover the request structure and preserve flat versus occupied position options; they do not pin the full instruction wording.
 
 A real-provider simex observation is bounded by 20 minutes or 60 provider calls, whichever occurs first. Record provider failures separately from HOLD. Use the unchanged simex configuration and a fresh participant session. Do not inject orders, override choices, or force liquidation at the observation limit.
 
@@ -20,7 +20,7 @@ Only an opening execution followed by closing execution and a return to zero pos
 
 Temporal market context, entry timestamps, alternative simulated markets, and any new probability-based policy require a separate design decision. Do not tune wording repeatedly merely to obtain a fill.
 
-## Observed result, 2026-09-27
+## Observed result, 2026-09-27, before the active-trading revision
 
 WSL GCC Debug and Release cold builds and CTest passed, 1/1 suite per configuration. A separate simex-enabled Debug cold build and CTest passed, 1/1.
 
