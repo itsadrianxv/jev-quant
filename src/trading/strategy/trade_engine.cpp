@@ -56,8 +56,7 @@ TradeEngine::~TradeEngine() {
 
 auto TradeEngine::start() -> void {
     bool expected = false;
-    if (!running_.compare_exchange_strong(expected, true,
-                                                                                std::memory_order_acq_rel)) {
+    if (!running_.compare_exchange_strong(expected, true, std::memory_order_acq_rel)) {
         return;
     }
     worker_ = std::jthread([this] { run(); });
@@ -78,9 +77,7 @@ auto TradeEngine::run() -> void {
         });
     }
     while (running()) {
-        if (!processPending()) {
-            std::this_thread::yield();
-        }
+        processPending();
     }
     if (log_handle_) {
         log_handle_->logFixed(Common::LogLevel::INFO, [this](auto& out) {
