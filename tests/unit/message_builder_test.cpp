@@ -8,7 +8,7 @@
 
 namespace {
 
-using Common::AsyncLogger::ProducerHandle::MessageBuilder;
+using MessageBuilder = Common::AsyncLogger::ProducerHandle::MessageBuilder;
 
 // Constructing a MessageBuilder over fresh zeroed storage must leave the
 // buffer as an empty (NUL-terminated) string, not garbage.
