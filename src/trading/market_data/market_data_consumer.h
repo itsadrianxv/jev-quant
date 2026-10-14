@@ -2,7 +2,9 @@
 
 #include <atomic>
 #include <cstddef>
+#include <functional>
 #include <optional>
+#include <thread>
 #include <utility>
 
 #include "common/async_logger.h"
@@ -12,11 +14,9 @@
 
 namespace Trading {
 
-/// Queue-facing participant-side market-data boundary.
-///
-/// Transport-specific code will call publishMarketUpdate() after decoding a
-/// venue message. The first implementation deliberately leaves sockets out so
-/// replay and simulated venues can exercise the same queue contract.
+/// Owns the market worker; adapters supply poll callbacks with bounded work and waits.
+/// Publishing and sequence access belong to that worker, or to one synchronous
+/// caller when no worker is started. Do not mix synchronous and worker use.
 class MarketDataConsumer final {
   public:
     /// Transfer unbound handles; the owning logger must outlive this component.
@@ -27,15 +27,18 @@ class MarketDataConsumer final {
             : client_id_(client_id), market_updates_(market_updates), log_handle_(std::move(log_handle)),
               verbose_market_data_(verbose_market_data) {}
 
+    ~MarketDataConsumer();
+
     MarketDataConsumer(const MarketDataConsumer&) = delete;
     MarketDataConsumer& operator=(const MarketDataConsumer&) = delete;
     MarketDataConsumer(MarketDataConsumer&&) = delete;
     MarketDataConsumer& operator=(MarketDataConsumer&&) = delete;
 
-    auto start() -> void {
-        running_.store(true, std::memory_order_release);
-    }
-    auto stop() noexcept -> void { running_.store(false, std::memory_order_release); }
+    /// Lifecycle calls are serialized by the owner. A stopped worker cannot restart.
+    auto start() -> void;
+    auto stop() noexcept -> void;
+    /// Configure before start, or clear after stop, on the lifecycle owner thread.
+    auto setPollHandler(std::function<void()> handler) -> void;
 
     auto publishMarketUpdate(const Exchange::MarketUpdate& update) -> void;
 
@@ -61,15 +64,19 @@ class MarketDataConsumer final {
     }
 
   private:
+    auto run() -> void;
     auto ensureLoggingStarted() -> void;
     bool logging_started_ = false;
     const Common::ClientId client_id_ = Common::ClientId_INVALID;
     Exchange::MarketUpdateLFQueue* market_updates_ = nullptr;
     std::atomic<bool> running_{false};
+    bool started_ = false;
+    std::function<void()> poll_handler_;
     std::size_t local_receive_seq_num_ = 0;
     std::size_t next_expected_venue_seq_num_ = 1;
     std::optional<Common::AsyncLogger::ProducerHandle> log_handle_;
     bool verbose_market_data_ = false;
+    std::jthread worker_;
 };
 
 }  // namespace Trading

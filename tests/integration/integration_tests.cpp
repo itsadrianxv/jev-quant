@@ -47,16 +47,24 @@ class BinanceVenueHarness {
   public:
     static void prepare(BinanceUmFuturesVenueAdapter& venue,
                         const Exchange::ClientRequest& live_order,
-                        std::promise<void>& processed) {
+                        std::promise<std::thread::id>& processed,
+                        std::promise<std::thread::id>& market_processed) {
         venue.depth_book_.installSnapshot(nlohmann::json{
                 {"lastUpdateId", 10}, {"bids", nlohmann::json::array({nlohmann::json::array({"100", "2"})})},
                 {"asks", nlohmann::json::array({nlohmann::json::array({"101", "3"})})}});
         venue.snapshot_pending_ = true;
         venue.live_orders_[live_order.order_id_] = live_order;
-        venue.order_gateway_->setPollHandler([&venue] { venue.poll(); });
+        venue.order_gateway_->setPollHandler([&venue] { venue.pollOrders(); });
+        venue.market_data_->setPollHandler([&venue, &market_processed, reported=false]() mutable {
+            venue.pollMarket();
+            if (!reported) {
+                reported=true;
+                market_processed.set_value(std::this_thread::get_id());
+            }
+        });
         venue.order_gateway_->setRequestHandler([&venue, &processed](auto sequence, const auto& request) {
             venue.handleRequest(sequence, request);
-            processed.set_value();
+            processed.set_value(std::this_thread::get_id());
         });
     }
     static void depth(BinanceUmFuturesVenueAdapter& venue) {
@@ -684,18 +692,26 @@ TEST(ComponentLoggingTest, MarketStartupDoesNotBindTheCompositionThread) {
     Exchange::MarketUpdateLFQueue updates(8);
     auto handle = logger.registerProducer("MarketData", "market-data-7.log");
     Trading::MarketDataConsumer market(7, &updates, std::move(handle), true);
-    market.start();
-    logger.start();
-    std::jthread producer([&] {
+    std::promise<std::thread::id> published;
+    auto done = published.get_future();
+    market.setPollHandler([&, once=false]() mutable {
+        if (once) return;
+        once=true;
         Exchange::MarketUpdate update;
         update.ticker_id_ = 0;
         market.publishSequencedMarketUpdate(1, update);
         EXPECT_THROW(market.publishSequencedMarketUpdate(3, update), std::logic_error);
+        published.set_value(std::this_thread::get_id());
     });
-    producer.join();
+    logger.start();
+    market.start();
+    const auto status = done.wait_for(kWaitDeadline);
     market.stop();
     logger.stop();
+    ASSERT_EQ(std::future_status::ready, status);
+    EXPECT_NE(std::this_thread::get_id(), done.get());
     const auto text = readWholeFile(output_dir / "market-data-7.log");
+    EXPECT_NE(std::string::npos, text.find("event=component_stopped")) << text;
     EXPECT_NE(std::string::npos, text.find("[MarketData] event=component_started client_id=7")) << text;
     EXPECT_NE(std::string::npos, text.find("event=market_update_published")) << text;
     EXPECT_NE(std::string::npos, text.find("event=market_sequence_gap")) << text;
@@ -767,7 +783,6 @@ TEST(ComponentLoggingTest, ExplicitlyDisabledHandlesStillPublishMessages) {
     Trading::MarketDataConsumer market(7, &updates, std::nullopt, true);
     Trading::OrderGateway gateway(7, &requests, &responses, std::nullopt);
     Trading::JevWorker worker(&evaluations, &decisions, &provider, std::nullopt);
-    market.start();
     Exchange::MarketUpdate update;
     update.type_ = Exchange::MarketUpdateType::DEPTH_SNAPSHOT;
     update.ticker_id_ = 0;
@@ -777,10 +792,9 @@ TEST(ComponentLoggingTest, ExplicitlyDisabledHandlesStillPublishMessages) {
     EXPECT_TRUE(engine.processPending());
     EXPECT_FALSE(gateway.processPending());
     EXPECT_FALSE(worker.processPending());
-    market.stop();
 }
 
-TEST(ComponentLoggingTest, BinancePublishesSnapshotDepthAndResponsesOnGatewayThread) {
+TEST(ComponentLoggingTest, BinanceProcessesMarketDataIndependentlyOfTheGateway) {
     const auto output_dir = tempDir("jev_quant_binance_queue_handles");
     Common::AsyncLogger logger(output_dir, 64, std::chrono::milliseconds(1));
     Exchange::ClientRequestLFQueue requests(8);
@@ -798,9 +812,10 @@ TEST(ComponentLoggingTest, BinancePublishesSnapshotDepthAndResponsesOnGatewayThr
     live_order.order_id_ = 42;
     live_order.ticker_id_ = 0;
     live_order.qty_ = 1;
-    std::promise<void> processed;
+    std::promise<std::thread::id> processed, market_processed;
     auto done = processed.get_future();
-    Trading::BinanceVenueHarness::prepare(venue, live_order, processed);
+    auto market_done = market_processed.get_future();
+    Trading::BinanceVenueHarness::prepare(venue, live_order, processed, market_processed);
     std::jthread depth([&] { Trading::BinanceVenueHarness::depth(venue); });
     std::jthread user([&] { Trading::BinanceVenueHarness::fill(venue); });
     depth.join();
@@ -812,11 +827,20 @@ TEST(ComponentLoggingTest, BinancePublishesSnapshotDepthAndResponsesOnGatewayThr
     request->ticker_id_ = 1;  // Rejected by mapOrder before any REST call.
     requests.updateWriteIndex();
     logger.start();
+    market.start();
+    // Market processing must finish even while the gateway has not started.
+    const auto market_status = market_done.wait_for(kWaitDeadline);
+    EXPECT_EQ(std::future_status::ready, market_status);
+    EXPECT_EQ(2U, updates.size());
     gateway.start();
     const auto status = done.wait_for(kWaitDeadline);
     venue.stop();
     logger.stop();
     ASSERT_EQ(std::future_status::ready, status);
+    ASSERT_EQ(std::future_status::ready, market_status);
+    const auto market_thread = market_done.get();
+    EXPECT_NE(std::this_thread::get_id(), market_thread);
+    EXPECT_NE(done.get(), market_thread);
     ASSERT_EQ(2U, updates.size());
     const auto first_quantity = updates.getNextToRead()->depth_snapshot_.bids_[0].qty_;
     updates.updateReadIndex();

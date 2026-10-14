@@ -16,13 +16,25 @@ Use configuration for the fronts and instrument, and local environment-backed
 credentials. Do not select CTP assessment mode merely because SimNow is a
 simulation environment. Give each API instance its own flow directory.
 
-CTP callbacks copy their data into a bounded, mutex-protected internal queue
-and return. The gateway thread drains it through the existing poll hook and
-owns adapter state and normalized response sequencing. Neither callback
-thread writes directly into the engine's SPSC queues or mutates engine state.
-Account updates reach the engine through a thread-safe handoff consumed by
-the engine thread. Queue exhaustion disables trading and reports failure;
-private execution events must not be silently discarded.
+CTP callbacks copy their data into separate bounded SPSC queues, one for each
+SDK producer thread, and return. The MarketDataConsumer worker consumes market
+events, logs in and subscribes through the market API, normalizes depth, and
+publishes market updates. The OrderGateway worker consumes trader events and
+owns orders, account queries, and response sequencing. Each worker has its own
+login request state. Neither SDK callback writes directly to the engine queues.
+
+The adapter protects subscription/quote readiness and trading-day information
+with a small mutex. Failure and shutdown flags are atomic; failure text uses the
+lifecycle mutex. Only the gateway worker, or its owner after join, publishes
+account/readiness state. A market failure disables new submissions immediately
+through the fatal flag; the gateway publishes the disabled state on its next
+poll. No worker component calls or references the other. Account updates reach
+the engine through its existing thread-safe handoff. Queue exhaustion disables
+trading and reports failure; private execution events are not silently dropped.
+
+Shutdown first stops and joins the market worker, then allows the gateway to
+complete its existing cancellation procedure. Both workers are joined before
+the SDK transport is released. Market input is not drained during shutdown.
 
 Serialize startup queries, with at most one outstanding query and a
 conservative one-second minimum interval. Complete authentication, login,

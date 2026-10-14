@@ -108,8 +108,9 @@ struct SimNowVenueAdapter::Impl {
     std::condition_variable changed;
     // One pre-allocated bounded SPSC queue per CTP producer thread. The trader
     // API and the market API each deliver every callback from their own single
-    // internal thread, so each queue has exactly one producer and the gateway
-    // poll thread is the only consumer. Storage is allocated once here; a full
+    // internal thread. The market worker consumes market_events; the gateway
+    // worker consumes trader_events. Each queue has exactly one consumer.
+    // Storage is allocated once here; a full
     // queue keeps the overflow-flag semantics instead of allocating or
     // terminating.
     Common::LFQueue<Ctp::Event> trader_events;
@@ -117,13 +118,20 @@ struct SimNowVenueAdapter::Impl {
     std::string error;
     std::atomic<bool> active{false}, fatal{false}, stopping{false}, overflow{false};
     std::atomic<int> net_position{0};
-    bool started=false, used=false, market_started=false, ready=false, disconnected=false;
-    bool trader_connected=false, market_connected=false, subscribed=false, quote_valid=false;
+    bool started=false, used=false, ready=false;
+    std::atomic<bool> disconnected{false};
+    bool trader_connected=false, market_connected=false;
+    // Only adapter control state crosses worker boundaries; books and orders do not.
+    std::mutex market_state_mutex;
+    struct MarketState {
+        bool subscribed=false, quote_valid=false;
+        std::string trading_day, market_day;
+    } market_state;
+    int market_next_id=0, market_login_request=0;
     bool instrument_seen=false, account_seen=false, startup_done=false, stop_done=false;
     int next_id=0, query_id=0, front=0, session=0;
     std::uint64_t next_ref=0;
     std::string trading_day;
-    std::string market_day;
     Kind query_kind=Kind::Instrument;
     std::deque<Kind> queries;
     std::map<int,Kind> requests;
@@ -159,10 +167,19 @@ struct SimNowVenueAdapter::Impl {
         published_account=account; state_published=true;
         state_sink(enabled,account,instrument.VolumeMultiple>0 ? instrument.VolumeMultiple : 1);
     }
-    void fail(const std::string& reason) {
-        { std::scoped_lock lock(mutex); if(error.empty()) error=reason; }
-        fatal=true; active=false; state(false); changed.notify_all();
+    void signalFailure(const std::string& reason) {
+        {
+            std::scoped_lock lock(mutex);
+            if(error.empty()) error=reason;
+            fatal=true; active=false;
+        }
+        changed.notify_all();
         std::osyncstream(std::cerr)<<"event=simnow_failure reason="<<reason<<'\n';
+    }
+    // Only the gateway worker (or its owner after join) publishes account state.
+    void fail(const std::string& reason) {
+        signalFailure(reason);
+        state(false);
     }
     void enqueue(Common::LFQueue<Ctp::Event>& queue,Ctp::Event event) noexcept {
         if(auto* slot=queue.tryGetNextToWriteTo()) {
@@ -246,10 +263,13 @@ struct SimNowVenueAdapter::Impl {
     }
     void depth(const CThostFtdcDepthMarketDataField& p) {
         if(config.instrument!=p.InstrumentID) return;
-        market_day=p.TradingDay;
-        if(!trading_day.empty() && p.TradingDay[0] && trading_day!=p.TradingDay) {
-            // TODO(simnow-rollover): Reconcile and roll positions before continuing across trading days.
-            throw std::runtime_error("Trading day changed; restart from an empty account");
+        {
+            std::scoped_lock lock(market_state_mutex);
+            market_state.market_day=p.TradingDay;
+            if(!market_state.trading_day.empty() && p.TradingDay[0] && market_state.trading_day!=p.TradingDay) {
+                // TODO(simnow-rollover): Reconcile and roll positions before continuing across trading days.
+                throw std::runtime_error("Trading day changed; restart from an empty account");
+            }
         }
         Exchange::MarketUpdate u; u.type_=Exchange::MarketUpdateType::DEPTH_SNAPSHOT; u.ticker_id_=config.ticker_id;
         auto& d=u.depth_snapshot_;
@@ -265,8 +285,12 @@ struct SimNowVenueAdapter::Impl {
             if(bq[i]>0 && Ctp::price(bids[i])!=Common::Price_INVALID) d.bids_[i]={Ctp::price(bids[i]),static_cast<Common::Qty>(bq[i])};
             if(aq[i]>0 && Ctp::price(asks[i])!=Common::Price_INVALID) d.asks_[i]={Ctp::price(asks[i]),static_cast<Common::Qty>(aq[i])};
         }
-        quote_valid=d.bids_[0].price_!=Common::Price_INVALID && d.asks_[0].price_!=Common::Price_INVALID && d.asks_[0].price_>d.bids_[0].price_;
         market->publishMarketUpdate(u);
+        {
+            std::scoped_lock lock(market_state_mutex);
+            market_state.quote_valid=d.bids_[0].price_!=Common::Price_INVALID &&
+                d.asks_[0].price_!=Common::Price_INVALID && d.asks_[0].price_>d.bids_[0].price_;
+        }
     }
     void orderEvent(const CThostFtdcOrderField& p) {
         const auto it=orders.find(p.OrderRef);
@@ -330,7 +354,6 @@ struct SimNowVenueAdapter::Impl {
             return;
         }
         if(fatal) return;
-        if(e.kind==Kind::Depth) { if(auto p=std::get_if<CThostFtdcDepthMarketDataField>(&e.payload)) depth(*p); return; }
         if(e.error) {
             if(startup_done && query_id && e.request_id==query_id && query_kind==Kind::Account) {
                 query_id=0; account={NAN,NAN,NAN}; state(false); return;
@@ -341,29 +364,21 @@ struct SimNowVenueAdapter::Impl {
             if(trader_connected) throw std::runtime_error("CTP reconnection is unsupported");
             trader_connected=true; request(Kind::Auth); return;
         }
-        if(e.kind==Kind::MarketConnected) {
-            if(market_connected) throw std::runtime_error("CTP market reconnection is unsupported");
-            market_connected=true; request(Kind::MarketLogin); return;
-        }
-        if(e.kind==Kind::Subscription) { subscribed=e.last; return; }
-        if(e.kind==Kind::Auth || e.kind==Kind::Login || e.kind==Kind::MarketLogin || e.kind==Kind::Settlement) {
+        if(e.kind==Kind::Auth || e.kind==Kind::Login || e.kind==Kind::Settlement) {
             auto found=requests.find(e.request_id);
-            // SimNow's MD front returns zero instead of echoing the login request ID.
-            // There is only one pending MD login; duplicates after completion stay ignored.
-            if(e.kind==Kind::MarketLogin && e.request_id==0)
-                found=std::find_if(requests.begin(),requests.end(),[](const auto& entry){
-                    return entry.second==Kind::MarketLogin;
-                });
             if(found==requests.end() || found->second!=e.kind || !e.last) return;
             requests.erase(found);
             if(e.kind==Kind::Auth) request(Kind::Login);
-            else if(e.kind==Kind::MarketLogin) request(Kind::Subscription);
             else if(e.kind==Kind::Login) {
                 const auto* p=std::get_if<CThostFtdcRspUserLoginField>(&e.payload);
                 if(!p || !p->TradingDay[0]) throw std::runtime_error("Missing CTP login session");
                 front=p->FrontID; session=p->SessionID; trading_day=p->TradingDay;
-                if(!market_day.empty() && market_day!=trading_day)
-                    throw std::runtime_error("Trading and market data trading days disagree");
+                {
+                    std::scoped_lock lock(market_state_mutex);
+                    market_state.trading_day=trading_day;
+                    if(!market_state.market_day.empty() && market_state.market_day!=trading_day)
+                        throw std::runtime_error("Trading and market data trading days disagree");
+                }
                 next_ref=p->MaxOrderRef[0] ? std::stoull(p->MaxOrderRef) : 0;
                 request(Kind::Settlement);
             } else queries={Kind::Instrument,Kind::Account,Kind::Position,Kind::OrderQuery};
@@ -396,15 +411,56 @@ struct SimNowVenueAdapter::Impl {
             query_id=0;
         }
     }
-    void poll() noexcept {
+    void marketRequest(Kind kind) {
+        const auto id=++market_next_id;
+        if(kind==Kind::MarketLogin) market_login_request=id;
+        std::osyncstream(std::clog)<<"event=simnow_startup stage="<<stage(kind)<<" request="<<id<<'\n';
+        if(transport->request(kind,id)!=0) throw std::runtime_error("CTP startup request not submitted");
+    }
+    void marketEvent(const Ctp::Event& e) {
+        if(e.kind==Kind::Disconnected) {
+            disconnected=true;
+            throw std::runtime_error("CTP disconnected; execution status may be unknown");
+        }
+        if(fatal || stopping) return;
+        if(e.kind==Kind::Depth) {
+            if(auto p=std::get_if<CThostFtdcDepthMarketDataField>(&e.payload)) depth(*p);
+            return;
+        }
+        if(e.error) throw std::runtime_error("CTP response error code="+std::to_string(e.error));
+        if(e.kind==Kind::MarketConnected) {
+            if(market_connected) throw std::runtime_error("CTP reconnection is unsupported");
+            market_connected=true;
+            marketRequest(Kind::MarketLogin);
+        } else if(e.kind==Kind::MarketLogin) {
+            // SimNow may return zero instead of echoing the sole pending MD login ID.
+            if(!market_login_request || !e.last ||
+               (e.request_id!=0 && e.request_id!=market_login_request)) return;
+            market_login_request=0;
+            marketRequest(Kind::Subscription);
+        } else if(e.kind==Kind::Subscription) {
+            std::scoped_lock lock(market_state_mutex);
+            market_state.subscribed=e.last;
+        }
+    }
+    void pollMarket() noexcept {
         try {
-            if(!market_started) { market->start(); market_started=true; }
+            for(std::size_t batch=0; batch<256 && !stopping && !fatal; ++batch) {
+                const auto* pending=market_events.getNextToRead();
+                if(!pending) break;
+                try { marketEvent(*pending); } catch(const std::exception& ex) { signalFailure(ex.what()); }
+                market_events.updateReadIndex();
+            }
+        } catch(const std::exception& ex) { signalFailure(ex.what()); }
+    }
+    void pollOrders() noexcept {
+        try {
             if(overflow.exchange(false)) fail("CTP callback queue exhausted; execution status may be unknown");
-            for(auto* queue:{&trader_events,&market_events}) {
-                while(const auto* pending=queue->getNextToRead()) {
-                    try { event(*pending); } catch(const std::exception& ex) { fail(ex.what()); }
-                    queue->updateReadIndex();
-                }
+            for(std::size_t batch=0; batch<256; ++batch) {
+                const auto* pending=trader_events.getNextToRead();
+                if(!pending) break;
+                try { event(*pending); } catch(const std::exception& ex) { fail(ex.what()); }
+                trader_events.updateReadIndex();
             }
             const auto now=Clock::now();
             if(stopping) {
@@ -413,7 +469,7 @@ struct SimNowVenueAdapter::Impl {
                 if(!outstanding()) { std::scoped_lock lock(mutex); stop_done=true; changed.notify_all(); }
                 return;
             }
-            if(fatal) return;
+            if(fatal) { state(false); return; }
             if(query_id && now>query_deadline) throw std::runtime_error("CTP query timed out");
             if(startup_done && now>=next_account && !query_id && queries.empty()) {
                 queries.push_back(Kind::Account); next_account=now+std::chrono::seconds(30);
@@ -430,9 +486,17 @@ struct SimNowVenueAdapter::Impl {
                 }
                 else if(rc!=0) throw std::runtime_error("CTP query not submitted");
             }
-            const bool usable=startup_done && subscribed && quote_valid && std::isfinite(account.equity_);
+            bool market_ready;
+            {
+                std::scoped_lock lock(market_state_mutex);
+                market_ready=market_state.subscribed && market_state.quote_valid;
+            }
+            const bool usable=!fatal && startup_done && market_ready && std::isfinite(account.equity_);
             state(usable);
-            if(usable) { active=true; changed.notify_all(); }
+            if(usable) {
+                { std::scoped_lock lock(mutex); if(!fatal) active=true; }
+                changed.notify_all();
+            }
         } catch(const std::exception& ex) { fail(ex.what()); }
     }
 };
@@ -445,17 +509,20 @@ void SimNowVenueAdapter::start() {
     if(i.used) throw std::logic_error("SimNow adapter cannot be restarted");
     i.started=true; i.used=true;
     i.gateway->setRequestHandler([&i](std::size_t,const auto& r){try {i.submit(r);} catch(const std::exception& e){i.fail(e.what());}});
-    i.gateway->setPollHandler([&i]{i.poll();});
+    i.gateway->setPollHandler([&i]{i.pollOrders();});
+    i.market->setPollHandler([&i]{i.pollMarket();});
     try {
         i.transport->start(i.config,
             [&i](auto e){i.enqueue(i.trader_events,std::move(e));},
             [&i](auto e){i.enqueue(i.market_events,std::move(e));});
+        // TODO(lifecycle): Move component startup and shutdown orchestration to main().
+        i.market->start();
         i.gateway->start();
         std::unique_lock lock(i.mutex);
         const auto ok=i.changed.wait_for(lock,i.config.startup_timeout,[&]{return i.active.load() || i.fatal.load();});
         if(!ok || i.fatal) {
             lock.unlock();
-            if(!ok) { i.gateway->stop(); i.fail("SimNow startup timed out"); }
+            if(!ok) { i.market->stop(); i.gateway->stop(); i.fail("SimNow startup timed out"); }
             throw std::runtime_error(failure());
         }
     } catch(...) { stop(); throw; }
@@ -464,6 +531,7 @@ void SimNowVenueAdapter::stop() {
     auto& i=*impl_;
     if(!i.started) return;
     i.stopping=true;
+    i.market->stop();
     if(i.gateway->running()) {
         std::unique_lock lock(i.mutex);
         const auto ok=i.changed.wait_for(lock,i.config.shutdown_timeout,[&]{return i.stop_done;});
@@ -471,7 +539,8 @@ void SimNowVenueAdapter::stop() {
         i.gateway->stop();
         if(!ok) i.fail("Shutdown timeout; order state unresolved");
     }
-    i.transport->stop(); i.market->stop();
+    i.transport->stop();
+    i.market->setPollHandler({});
     i.gateway->setPollHandler({}); i.gateway->setRequestHandler({});
     i.active=false; i.started=false;
     std::osyncstream(std::clog)<<"event=simnow_stopped position="<<i.net_position.load()<<" unresolved="<<i.outstanding()<<'\n';

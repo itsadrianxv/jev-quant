@@ -90,7 +90,7 @@ struct SimexVenueAdapter::Impl {
     std::atomic<bool> running{false};
     bool started = false;
     int tcp = -1, udp = -1;
-    bool market_started = false, synchronized = false, usable = false;
+    bool synchronized = false, usable = false;
     std::uint64_t request_sequence = 0, response_sequence = 0, market_sequence = 0, snapshot_sequence = 0;
     std::size_t participant_response_sequence = 1;
     std::deque<Wire::WireRequest> outgoing;
@@ -183,8 +183,11 @@ struct SimexVenueAdapter::Impl {
             }
             last_packet = Clock::now();
             gateway->setRequestHandler([this](std::size_t, const auto& request) { submit(request); });
-            gateway->setPollHandler([this] { poll(); });
+            gateway->setPollHandler([this] { pollOrders(); });
+            market->setPollHandler([this] { pollMarket(); });
+            // TODO(lifecycle): Move component startup and shutdown orchestration to main().
             running.store(true);
+            market->start();
             gateway->start();
             std::clog << "event=simex_connected state=waiting_for_market_data\n";
         } catch (...) { stop(); throw; }
@@ -196,6 +199,7 @@ struct SimexVenueAdapter::Impl {
         gateway->setRequestHandler({});
         gateway->setPollHandler({});
         market->stop();
+        market->setPollHandler({});
         if (tcp >= 0) { ::close(tcp); tcp = -1; }
         if (udp >= 0) { ::close(udp); udp = -1; }
     }
@@ -225,10 +229,10 @@ struct SimexVenueAdapter::Impl {
             (!is_cancel && request.type_ != Exchange::ClientRequestType::NEW)) {
             reject(request, "invalid_request"); return;
         }
-        if (!is_cancel && (!usable || !validQty(request.qty_) || request.qty_ > static_cast<Common::Qty>(INT32_MAX) ||
+        if (!is_cancel && (!validQty(request.qty_) || request.qty_ > static_cast<Common::Qty>(INT32_MAX) ||
             (request.order_type_ != Common::OrderType::LIMIT && request.order_type_ != Common::OrderType::MARKET) ||
             (request.order_type_ == Common::OrderType::LIMIT && !validPrice(request.price_)))) {
-            reject(request, "unsupported_order_or_unusable_depth"); return;
+            reject(request, "unsupported_order"); return;
         }
         auto found = orders.find(request.order_id_);
         if (is_cancel && (found == orders.end() || found->second.terminal || found->second.cancel_pending)) {
@@ -453,16 +457,14 @@ struct SimexVenueAdapter::Impl {
         } else throw std::runtime_error("Unknown simex datagram kind");
     }
 
-    void poll() {
+    void pollOrders() {
         try {
-            if (!market_started) { market->start(); market_started = true; }
-            std::array<pollfd, 2> descriptors{{{tcp, static_cast<short>(POLLIN | (outgoing.empty() ? 0 : POLLOUT)), 0}, {udp, POLLIN, 0}}};
-            const auto result = ::poll(descriptors.data(), descriptors.size(), 1);
-            if (result < 0 && !wouldBlock()) throw std::runtime_error("Simex socket poll failed");
-            for (const auto& fd : descriptors) {
-                if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)) throw std::runtime_error("Simex transport disconnected");
-            }
-            if (descriptors[0].revents & POLLIN) {
+            pollfd descriptor{tcp, static_cast<short>(POLLIN | (outgoing.empty() ? 0 : POLLOUT)), 0};
+            const auto result = ::poll(&descriptor, 1, 1);
+            if (result < 0 && !wouldBlock()) throw std::runtime_error("Simex TCP poll failed");
+            if (descriptor.revents & (POLLERR | POLLHUP | POLLNVAL))
+                throw std::runtime_error("Simex transport disconnected");
+            if (descriptor.revents & POLLIN) {
                 for (std::size_t batch = 0; batch < 256; ++batch) {
                     const auto count = ::recv(tcp, reinterpret_cast<char*>(&incoming) + received, sizeof(incoming) - received, 0);
                     if (count == 0) throw std::runtime_error("Simex TCP disconnected; execution status may be unknown");
@@ -471,7 +473,30 @@ struct SimexVenueAdapter::Impl {
                     if (received == sizeof(incoming)) { response(incoming); incoming = {}; received = 0; }
                 }
             }
-            if (descriptors[1].revents & POLLIN) {
+            if (!outgoing.empty() && (descriptor.revents & POLLOUT)) {
+                auto& wire = outgoing.front();
+                if (sent == 0) wire.header.sequence = request_sequence;
+                const auto count = ::send(tcp, reinterpret_cast<const char*>(&wire) + sent, sizeof(wire) - sent, MSG_NOSIGNAL);
+                if (count < 0 && !wouldBlock()) throw std::runtime_error("Simex TCP send failed; execution status may be unknown");
+                if (count > 0) { sent += static_cast<std::size_t>(count); last_write = Clock::now(); }
+                if (sent == sizeof(wire)) { outgoing.pop_front(); sent = 0; ++request_sequence; }
+            }
+            if (!outgoing.empty() && Clock::now() - last_write > config.connect_timeout)
+                throw std::runtime_error("Simex TCP send timeout; execution status may be unknown");
+        } catch (const std::exception& error) {
+            std::cerr << "event=simex_fatal reason=" << error.what() << std::endl;
+            std::terminate();
+        }
+    }
+
+    void pollMarket() {
+        try {
+            pollfd descriptor{udp, POLLIN, 0};
+            const auto result = ::poll(&descriptor, 1, 1);
+            if (result < 0 && !wouldBlock()) throw std::runtime_error("Simex UDP poll failed");
+            if (descriptor.revents & (POLLERR | POLLHUP | POLLNVAL))
+                throw std::runtime_error("Simex market transport disconnected");
+            if (descriptor.revents & POLLIN) {
                 std::array<std::byte, 65536> bytes;
                 for (std::size_t batch = 0; batch < 256; ++batch) {
                     sockaddr_in sender{};
@@ -485,25 +510,6 @@ struct SimexVenueAdapter::Impl {
                     last_packet = Clock::now();
                 }
             }
-            if (!outgoing.empty() && (descriptors[0].revents & POLLOUT)) {
-                auto& wire = outgoing.front();
-                if (sent == 0) {
-                    if (!usable && wire.request.type == Venue::RequestType::NEW) {
-                        auto& order = orders.at(wire.request.client_order_id);
-                        reject(order.request, "market_became_unusable_before_send");
-                        order.terminal = true;
-                        outgoing.pop_front();
-                        return;
-                    }
-                    wire.header.sequence = request_sequence;
-                }
-                const auto count = ::send(tcp, reinterpret_cast<const char*>(&wire) + sent, sizeof(wire) - sent, MSG_NOSIGNAL);
-                if (count < 0 && !wouldBlock()) throw std::runtime_error("Simex TCP send failed; execution status may be unknown");
-                if (count > 0) { sent += static_cast<std::size_t>(count); last_write = Clock::now(); }
-                if (sent == sizeof(wire)) { outgoing.pop_front(); sent = 0; ++request_sequence; }
-            }
-            if (!outgoing.empty() && Clock::now() - last_write > config.connect_timeout)
-                throw std::runtime_error("Simex TCP send timeout; execution status may be unknown");
             if (Clock::now() - last_packet > config.feed_timeout)
                 throw std::runtime_error("Simex market-data transport timeout");
             if (market_sequence >= advertised_sequence) ahead_since = {};

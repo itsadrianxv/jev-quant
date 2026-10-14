@@ -7,7 +7,45 @@
 
 namespace Trading {
 
-// start() may run on a composition thread. Only publishing owns this handle.
+MarketDataConsumer::~MarketDataConsumer() { stop(); }
+
+auto MarketDataConsumer::start() -> void {
+    if (running()) return;
+    if (started_) throw std::logic_error("MarketDataConsumer cannot be restarted");
+    running_.store(true, std::memory_order_release);
+    try {
+        worker_ = std::jthread([this] { run(); });
+        started_ = true;
+    } catch (...) {
+        running_.store(false, std::memory_order_release);
+        throw;
+    }
+}
+
+auto MarketDataConsumer::stop() noexcept -> void {
+    running_.store(false, std::memory_order_release);
+    if (worker_.joinable()) worker_.join();
+}
+
+auto MarketDataConsumer::setPollHandler(std::function<void()> handler) -> void {
+    if (running()) throw std::logic_error("Cannot replace a running market poll handler");
+    poll_handler_ = std::move(handler);
+}
+
+auto MarketDataConsumer::run() -> void {
+    ensureLoggingStarted();
+    while (running()) {
+        if (poll_handler_) poll_handler_();
+        std::this_thread::yield();
+    }
+    if (log_handle_) {
+        log_handle_->logFixed(Common::LogLevel::INFO, [this](auto& out) {
+            out.append("event=component_stopped client_id=").append(client_id_);
+        });
+    }
+}
+
+// start() runs on the lifecycle owner; logging binds on the worker or synchronous publisher.
 auto MarketDataConsumer::ensureLoggingStarted() -> void {
     if (log_handle_ && !logging_started_) {
         log_handle_->bindToCurrentThread();

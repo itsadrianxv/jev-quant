@@ -80,7 +80,8 @@ class BinanceUmFuturesVenueAdapter final : public VenueAdapter {
   private:
     friend class BinanceVenueHarness;
 
-    auto poll() -> void;
+    auto pollMarket() -> void;
+    auto pollOrders() -> void;
     auto handleUserEvent(const nlohmann::json& message) -> void;
     auto handleRequest(std::size_t sequence,
                        const Exchange::ClientRequest& request) -> void;
@@ -101,7 +102,7 @@ class BinanceUmFuturesVenueAdapter final : public VenueAdapter {
     std::jthread keepalive_thread_;
     nlohmann::json account_state_;
     BinanceDepthBook depth_book_;
-    // Each WebSocket worker has its own SPSC queue to the gateway worker.
+    // Depth events go to the market worker; user events go to the gateway worker.
     // TODO: Decode directly into typed events to avoid copying JSON payloads.
     Common::LFQueue<nlohmann::json> depth_events_{1024};
     Common::LFQueue<nlohmann::json> user_events_{1024};

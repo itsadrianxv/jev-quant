@@ -50,7 +50,8 @@ names read as scenario-plus-expectation sentences.
   handles transferred into worker components, lifecycle file routing, deferred
   market publisher binding, Binance construction without binding, separate
   ordinary/TTT worker channels, explicit disabled handles, and offline Binance
-  snapshot/depth/fill/rejection publication on the gateway thread. See
+  snapshot/depth publication on the market worker independently of the gateway,
+  with fill/rejection publication on the gateway worker. See
   [component logging](../component-logging.md) for ownership and lifetime rules.
 - Memory pool (`MemPoolTest`, `MemPoolPlacementTest`, unit): distinct block
   handout, LIFO reuse, value-initialization on revive, zero capacity throws,
@@ -190,3 +191,16 @@ names read as scenario-plus-expectation sentences.
 
 - `TttInstrumentationTest`: stamped messages produce the four latency events
   with `elapsed_ns=` values; unstamped messages produce none.
+
+## Market and order worker separation (integration layer)
+
+- `MarketDataWorkerTest`: duplicate start, serialized lifecycle, callback
+  configuration, joined stop/destruction, and rejected restart.
+- `ComponentLoggingTest`: market worker log ownership and offline Binance
+  snapshot/depth progress before the order worker starts.
+- `SimNowAdapter`: depth processing during blocked order submission, quote
+  invalidation and recovery, market-side disconnects, startup trading-day
+  mismatch, plus existing cancellation and failure tests.
+- `SimexAdapter` (requires `JEV_ENABLE_SIMEX=ON`): loopback UDP snapshots with
+  the gateway stopped; TCP new orders despite unusable depth, with invalid
+  quantity and duplicate-order rejection retained. No live venue is used.

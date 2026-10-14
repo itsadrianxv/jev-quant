@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <future>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -56,6 +57,8 @@ struct Fake final : Ctp::Transport {
          no_cancel = false;
     bool no_instrument = false, query_throttle = false, flood = false;
     int market_login_id = -1;
+    const char* market_day = "20260928";
+    std::function<void()> before_insert;
     std::atomic<int> subscriptions{0};
     static bool marketSide(Kind k) {
         return k == Kind::MarketConnected || k == Kind::MarketLogin ||
@@ -82,7 +85,7 @@ struct Fake final : Ctp::Transport {
     CThostFtdcDepthMarketDataField depth() {
         CThostFtdcDepthMarketDataField p{};
         text(p.InstrumentID, "au2612");
-        text(p.TradingDay, "20260928");
+        text(p.TradingDay, market_day);
         p.BidPrice1 = 800;
         p.AskPrice1 = 800.02;
         p.BidVolume1 = 10;
@@ -160,6 +163,7 @@ struct Fake final : Ctp::Transport {
         return 0;
     }
     int insert(const CThostFtdcInputOrderField& p, int) override {
+        if (before_insert) before_insert();
         std::scoped_lock lock(mutex);
         sent.push_back(p);
         return reject_insert ? -1 : 0;
@@ -427,6 +431,74 @@ TEST_F(SimNowAdapter, SubscribesToTheConfiguredInstrumentOnStartup) {
 
     EXPECT_FALSE(adapter_->failed());
     EXPECT_EQ(1, fake_->subscriptions.load());
+}
+
+TEST_F(SimNowAdapter, ProcessesQuotesWhileOrderSubmissionIsBlocked) {
+    std::promise<void> entered, release;
+    auto entered_future = entered.get_future();
+    auto release_future = release.get_future();
+    arrange([&](Fake& fake) {
+        fake.before_insert = [&] {
+            entered.set_value();
+            EXPECT_EQ(std::future_status::ready, release_future.wait_for(5s));
+        };
+    });
+    startAdapter();
+    firstDepthSnapshot();
+    send();
+    const auto entered_status = entered_future.wait_for(2s);
+    EXPECT_EQ(std::future_status::ready, entered_status);
+    auto depth = fake_->depth();
+    depth.BidPrice1 = 799;
+    fake_->emit(Kind::Depth, depth);
+    // Release the blocked order worker even if observing the market update fails.
+    try {
+        EXPECT_EQ(Ctp::price(799), firstDepthSnapshot().bids_[0].price_);
+    } catch (...) {
+        release.set_value();
+        adapter_->stop();
+        throw;
+    }
+    release.set_value();
+    awaitFirstInsert();
+    adapter_->stop();
+    EXPECT_FALSE(adapter_->failed());
+}
+
+TEST_F(SimNowAdapter, DisablesAndRestoresTradingWhenQuotesBecomeInvalidAndRecover) {
+    startAdapter();
+    firstDepthSnapshot();
+    auto invalid = fake_->depth();
+    invalid.AskVolume1 = 0;
+    fake_->emit(Kind::Depth, invalid);
+    waitUntil([&] { return !ready_.load(); }, [&] { return "ready=" + std::to_string(ready_.load()); });
+    send();
+    EXPECT_EQ(Exchange::ClientResponseType::REJECTED, response().type_);
+    EXPECT_EQ(0U, fake_->count());
+    fake_->emit(Kind::Depth, fake_->depth());
+    waitUntil([&] { return ready_.load(); }, [&] { return "ready=" + std::to_string(ready_.load()); });
+    send(2);
+    awaitFirstInsert();
+    adapter_->stop();
+    EXPECT_FALSE(adapter_->failed());
+}
+
+TEST_F(SimNowAdapter, RejectsOrdersAndDisablesTradingAfterAMarketDisconnect) {
+    startAdapter();
+    fake_->market({Kind::Disconnected, 0, 4097, true, {}});
+    awaitFailure();
+    waitUntil([&] { return !ready_.load(); }, [&] { return "ready=" + std::to_string(ready_.load()); });
+    send();
+    EXPECT_EQ(Exchange::ClientResponseType::REJECTED, response().type_);
+    EXPECT_EQ(0U, fake_->count());
+    adapter_->stop();
+}
+
+TEST_F(SimNowAdapter, RefusesStartupWhenMarketAndTradingDaysDisagree) {
+    arrange([](Fake& fake) { fake.market_day = "20260929"; });
+    EXPECT_THROW(startAdapter(), std::runtime_error);
+    EXPECT_TRUE(adapter_->failed());
+    EXPECT_FALSE(ready_.load());
 }
 
 TEST_F(SimNowAdapter, TimesOutOnAMarketLoginFromAnotherSession) {

@@ -18,7 +18,7 @@ struct SimexVenueConfig {
     static auto fromJson(const nlohmann::json& value, Common::TickerId ticker) -> SimexVenueConfig;
 };
 
-// The OrderGateway worker owns all socket and mapping state.
+// The market worker owns UDP and book state; the gateway owns TCP and orders.
 class SimexVenueAdapter final : public VenueAdapter {
   public:
     SimexVenueAdapter(MarketDataConsumer* market, OrderGateway* orders, SimexVenueConfig config);

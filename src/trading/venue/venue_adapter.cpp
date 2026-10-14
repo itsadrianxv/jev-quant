@@ -413,7 +413,10 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
             [this](std::size_t sequence, const Exchange::ClientRequest& request) {
                 handleRequest(sequence, request);
             });
-    order_gateway_->setPollHandler([this] { poll(); });
+    order_gateway_->setPollHandler([this] { pollOrders(); });
+    market_data_->setPollHandler([this] { pollMarket(); });
+    // TODO(lifecycle): Move component startup and shutdown orchestration to main().
+    market_data_->start();
     order_gateway_->start();
     running_.store(true, std::memory_order_release);
     if (log_handle_) log_handle_->log(Common::LogLevel::INFO, "event=component_ready");
@@ -429,30 +432,42 @@ auto BinanceUmFuturesVenueAdapter::stop() -> void {
     if (user_stream_ != nullptr) user_stream_->stop();
     keepalive_running_.store(false, std::memory_order_release);
     if (keepalive_thread_.joinable()) keepalive_thread_.join();
-    if (order_gateway_ != nullptr) order_gateway_->stop();
-    if (market_data_ != nullptr) market_data_->stop();
+    if (order_gateway_ != nullptr) {
+        order_gateway_->stop();
+        order_gateway_->setPollHandler({});
+        order_gateway_->setRequestHandler({});
+    }
+    if (market_data_ != nullptr) {
+        market_data_->stop();
+        market_data_->setPollHandler({});
+    }
 }
 
 auto BinanceUmFuturesVenueAdapter::running() const noexcept -> bool {
     return running_.load(std::memory_order_acquire);
 }
 
-// The gateway worker owns publication and its log handles. WebSocket workers
-// only enqueue events, so startup snapshots and live updates share one producer.
-auto BinanceUmFuturesVenueAdapter::poll() -> void {
+// The market worker owns the book, publications, and market log handle.
+auto BinanceUmFuturesVenueAdapter::pollMarket() -> void {
     if (snapshot_pending_) {
-        market_data_->start();
         market_data_->publishMarketUpdate(depth_book_.buildMarketUpdate(config_.ticker_id));
         snapshot_pending_ = false;
     }
-    while (const auto* message = depth_events_.getNextToRead()) {
+    for (std::size_t batch = 0; batch < 256; ++batch) {
+        const auto* message = depth_events_.getNextToRead();
+        if (message == nullptr) break;
         depth_book_.onDepthEvent(*message);
         if (depth_book_.snapshotReady()) {
             market_data_->publishMarketUpdate(depth_book_.buildMarketUpdate(config_.ticker_id));
         }
         depth_events_.updateReadIndex();
     }
-    while (const auto* message = user_events_.getNextToRead()) {
+}
+
+auto BinanceUmFuturesVenueAdapter::pollOrders() -> void {
+    for (std::size_t batch = 0; batch < 256; ++batch) {
+        const auto* message = user_events_.getNextToRead();
+        if (message == nullptr) break;
         handleUserEvent(*message);
         user_events_.updateReadIndex();
     }

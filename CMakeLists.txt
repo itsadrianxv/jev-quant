@@ -196,6 +196,13 @@ if(JEV_ENABLE_SIMNOW)
     target_link_libraries(simnow_live_smoke PRIVATE jev_trading_core)
 endif()
 
+if(JEV_ENABLE_SIMEX)
+    jev_add_gtest_test(simex_adapter_tests LABEL integration
+            SOURCES tests/integration/simex_adapter_test.cpp)
+    target_include_directories(simex_adapter_tests PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/src" "${JEV_SIMEX_SOURCE_DIR}/src")
+endif()
+
 jev_add_gtest_test(unit_tests LABEL unit
         SOURCES tests/unit/position_keeper_test.cpp
                 tests/unit/risk_manager_test.cpp
@@ -218,6 +225,7 @@ jev_add_gtest_test(component_tests LABEL component
                 tests/component/order_state_machine_test.cpp)
 jev_add_gtest_test(integration_tests LABEL integration
         SOURCES tests/integration/integration_tests.cpp
+                tests/integration/market_data_worker_test.cpp
                 tests/integration/async_logger_test.cpp)
 # The integration suite locates the local mock decision server by absolute
 # source path because ctest invokes each case from the build directory.
