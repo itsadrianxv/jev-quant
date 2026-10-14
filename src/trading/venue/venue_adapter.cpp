@@ -333,7 +333,12 @@ auto BinanceUmFuturesVenueAdapter::adjustedTimestamp(
     return local_time_ms + server_offset_ms;
 }
 
-auto BinanceUmFuturesVenueAdapter::start() -> void {
+auto BinanceUmFuturesVenueAdapter::prepare() -> void {
+    if (used_) throw std::logic_error("Binance adapter cannot be prepared twice");
+    if ((market_data_ && market_data_->running()) ||
+        (order_gateway_ && order_gateway_->running()))
+        throw std::logic_error("Prepare Binance before starting business workers");
+    used_ = true;
     lifecycle_started_ = true;
     if (log_handle_) {
         log_handle_->log(Common::LogLevel::INFO, "event=component_started");
@@ -415,14 +420,14 @@ auto BinanceUmFuturesVenueAdapter::start() -> void {
             });
     order_gateway_->setPollHandler([this] { pollOrders(); });
     market_data_->setPollHandler([this] { pollMarket(); });
-    // TODO(lifecycle): Move component startup and shutdown orchestration to main().
-    market_data_->start();
-    order_gateway_->start();
     running_.store(true, std::memory_order_release);
     if (log_handle_) log_handle_->log(Common::LogLevel::INFO, "event=component_ready");
 }
 
 auto BinanceUmFuturesVenueAdapter::stop() -> void {
+    if ((market_data_ && market_data_->running()) ||
+        (order_gateway_ && order_gateway_->running()))
+        throw std::logic_error("Join business workers before stopping Binance");
     if (lifecycle_started_ && log_handle_) {
         log_handle_->log(Common::LogLevel::INFO, "event=component_stopped");
     }
@@ -433,12 +438,10 @@ auto BinanceUmFuturesVenueAdapter::stop() -> void {
     keepalive_running_.store(false, std::memory_order_release);
     if (keepalive_thread_.joinable()) keepalive_thread_.join();
     if (order_gateway_ != nullptr) {
-        order_gateway_->stop();
         order_gateway_->setPollHandler({});
         order_gateway_->setRequestHandler({});
     }
     if (market_data_ != nullptr) {
-        market_data_->stop();
         market_data_->setPollHandler({});
     }
 }

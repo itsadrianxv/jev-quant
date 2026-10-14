@@ -23,7 +23,15 @@ namespace Trading {
 class VenueAdapter {
   public:
     virtual ~VenueAdapter() = default;
-    virtual auto start() -> void = 0;
+    /// Prepare transport resources and callbacks without starting business workers.
+    /// The owner then starts MarketDataConsumer and OrderGateway explicitly.
+    virtual auto prepare() -> void = 0;
+    /// Called after both workers start. Some venues need them to finish login.
+    virtual auto waitUntilReady() -> void {}
+    /// Finish venue shutdown work while the gateway can still process responses.
+    virtual auto quiesce() -> void {}
+    /// Release transport and callbacks only after the owner joins both workers.
+    /// The same ordering is required before destruction, including on exceptions.
     virtual auto stop() -> void = 0;
     [[nodiscard]] virtual auto running() const noexcept -> bool = 0;
 };
@@ -61,7 +69,7 @@ class BinanceUmFuturesVenueAdapter final : public VenueAdapter {
     BinanceUmFuturesVenueAdapter(const BinanceUmFuturesVenueAdapter&) = delete;
     BinanceUmFuturesVenueAdapter& operator=(const BinanceUmFuturesVenueAdapter&) = delete;
 
-    auto start() -> void override;
+    auto prepare() -> void override;
     auto stop() -> void override;
     [[nodiscard]] auto running() const noexcept -> bool override;
 
@@ -94,6 +102,7 @@ class BinanceUmFuturesVenueAdapter final : public VenueAdapter {
     BinanceUmFuturesConfig config_{};
     std::atomic<bool> running_{false};
     bool lifecycle_started_ = false;
+    bool used_ = false;
     std::int64_t server_time_offset_ms_ = 0;
     std::unique_ptr<BinanceWebSocketStream> depth_stream_;
     std::unique_ptr<BinanceWebSocketStream> user_stream_;

@@ -23,7 +23,7 @@ class SimexVenueAdapter final : public VenueAdapter {
   public:
     SimexVenueAdapter(MarketDataConsumer* market, OrderGateway* orders, SimexVenueConfig config);
     ~SimexVenueAdapter() override;
-    auto start() -> void override;
+    auto prepare() -> void override;
     auto stop() -> void override;
     [[nodiscard]] auto running() const noexcept -> bool override;
   private:

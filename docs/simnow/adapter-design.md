@@ -32,9 +32,18 @@ poll. No worker component calls or references the other. Account updates reach
 the engine through its existing thread-safe handoff. Queue exhaustion disables
 trading and reports failure; private execution events are not silently dropped.
 
-Shutdown first stops and joins the market worker, then allows the gateway to
-complete its existing cancellation procedure. Both workers are joined before
-the SDK transport is released. Market input is not drained during shutdown.
+The caller invokes `prepare()` to install callbacks and initialize the SDK
+transport without starting business workers. It starts MarketDataConsumer and
+OrderGateway explicitly, then calls `waitUntilReady()` for the existing startup
+gates. Readiness waits require both workers because they drive the handshake.
+
+Shutdown first stops and joins the market worker, then calls `quiesce()` while
+the gateway completes cancellation. The caller joins the gateway before calling
+`stop()` to release the SDK transport and clear callbacks. Startup failures use
+the same cleanup sequence; the adapter never starts or joins business workers.
+Market input is not drained during shutdown. Readiness and cancellation timeouts
+signal failure without accessing gateway-owned account state; final disabled
+state publication happens after the gateway joins.
 
 Serialize startup queries, with at most one outstanding query and a
 conservative one-second minimum interval. Complete authentication, login,

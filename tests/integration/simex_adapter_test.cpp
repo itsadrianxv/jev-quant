@@ -45,7 +45,12 @@ class SimexAdapter : public ::testing::Test {
         destination_ = address;
         config.feed_timeout = 30s;
         adapter_ = std::make_unique<Trading::SimexVenueAdapter>(&market_, &gateway_, config);
-        adapter_->start();
+        adapter_->prepare();
+        EXPECT_FALSE(market_.running());
+        EXPECT_FALSE(gateway_.running());
+        market_.start();
+        gateway_.start();
+        adapter_->waitUntilReady();
         pollfd descriptor{listener_, POLLIN, 0};
         ASSERT_EQ(1, ::poll(&descriptor, 1, 2000));
         peer_ = ::accept(listener_, nullptr, nullptr);
@@ -53,8 +58,15 @@ class SimexAdapter : public ::testing::Test {
     }
 
     void TearDown() override {
-        if (adapter_) adapter_->stop();
+        stopAdapter();
         for (const int fd : {peer_, listener_, sender_}) if (fd >= 0) ::close(fd);
+    }
+
+    void stopAdapter() {
+        market_.stop();
+        if (adapter_) adapter_->quiesce();
+        gateway_.stop();
+        if (adapter_) adapter_->stop();
     }
 
     void snapshot() {
@@ -123,7 +135,7 @@ TEST_F(SimexAdapter, ReceivesMarketSnapshotsWithTheGatewayStopped) {
     ASSERT_TRUE(waitFor([&] { return updates_.size() == 1; })) << "marketUpdates=" << updates_.size();
     EXPECT_EQ(Exchange::MarketUpdateType::DEPTH_SNAPSHOT, updates_.getNextToRead()->type_);
     EXPECT_TRUE(market_.running());
-    adapter_->stop();
+    stopAdapter();
     EXPECT_FALSE(market_.running());
 }
 

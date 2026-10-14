@@ -63,7 +63,9 @@ class SimNowVenueAdapter final : public VenueAdapter {
     SimNowVenueAdapter(MarketDataConsumer*, OrderGateway*, SimNowConfig,
                       StateSink, std::unique_ptr<Ctp::Transport> = Ctp::makeTransport());
     ~SimNowVenueAdapter() override;
-    void start() override;
+    void prepare() override;
+    void waitUntilReady() override;
+    void quiesce() override;
     void stop() override;
     bool running() const noexcept override;
     bool failed() const noexcept;

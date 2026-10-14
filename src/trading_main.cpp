@@ -173,31 +173,46 @@ int main(int argc, char** argv) {
         std::signal(SIGINT, onSignal);
         std::signal(SIGTERM, onSignal);
 
-        logger.start();
-        std::clog << "Starting Jev worker\n";
-        jev_worker.start();
-        std::clog << "Starting trade engine\n";
-        engine.start();
-        std::clog << "Starting " << venue_type << " venue adapter\n";
-        venue->start();
-        std::clog << venue_type << " venue adapter connected\n";
-        std::clog << "jev_trading running\n";
+        // Keep the engine consuming responses while SimNow cancels outstanding orders.
+        // TODO(lifecycle): Add cooperative cancellation to provider calls during shutdown.
+        const auto shutdown = [&] {
+            if (simnow) engine.disableVenueTrading();
+            market_data.stop();
+            venue->quiesce();
+            order_gateway.stop();
+            venue->stop();
+            engine.stop();
+            jev_worker.stop();
+            logger.stop();
+        };
+        try {
+            logger.start();
+            std::clog << "Preparing " << venue_type << " venue adapter\n";
+            venue->prepare();
+            std::clog << "Starting Jev worker\n";
+            jev_worker.start();
+            std::clog << "Starting trade engine\n";
+            engine.start();
+            std::clog << "Starting market data consumer\n";
+            market_data.start();
+            std::clog << "Starting order gateway\n";
+            order_gateway.start();
+            venue->waitUntilReady();
+            std::clog << venue_type << " venue adapter connected\n";
+            std::clog << "jev_trading running\n";
 
-        const auto started_at = std::chrono::steady_clock::now();
-        while (!stopping.load(std::memory_order_acquire) &&
-               venue->running() &&
-               (run_seconds == 0 || std::chrono::steady_clock::now() - started_at < std::chrono::seconds(run_seconds))) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            const auto started_at = std::chrono::steady_clock::now();
+            while (!stopping.load(std::memory_order_acquire) &&
+                   venue->running() &&
+                   (run_seconds == 0 || std::chrono::steady_clock::now() - started_at < std::chrono::seconds(run_seconds))) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        } catch (...) {
+            // Join workers before stack unwinding can destroy their callback targets.
+            shutdown();
+            throw;
         }
-
-        std::clog << "Stopping " << venue_type << " venue adapter\n";
-        if (simnow) engine.disableVenueTrading();
-        venue->stop();
-        std::clog << "Stopping trade engine\n";
-        engine.stop();
-        std::clog << "Stopping Jev worker\n";
-        jev_worker.stop();
-        logger.stop();
+        shutdown();
 #ifdef JEV_ENABLE_SIMNOW
         if (simnow && static_cast<Trading::SimNowVenueAdapter*>(venue.get())->failed()) return 1;
 #endif

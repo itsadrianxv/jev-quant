@@ -726,7 +726,7 @@ TEST(ComponentLoggingTest, BinanceConstructorLeavesHandleUnbound) {
     logger.start();
     std::jthread lifecycle([&] {
         // Dependency validation fails before any network request.
-        EXPECT_THROW(venue.start(), std::runtime_error);
+        EXPECT_THROW(venue.prepare(), std::runtime_error);
         venue.stop();
     });
     lifecycle.join();
@@ -834,6 +834,9 @@ TEST(ComponentLoggingTest, BinanceProcessesMarketDataIndependentlyOfTheGateway) 
     EXPECT_EQ(2U, updates.size());
     gateway.start();
     const auto status = done.wait_for(kWaitDeadline);
+    market.stop();
+    venue.quiesce();
+    gateway.stop();
     venue.stop();
     logger.stop();
     ASSERT_EQ(std::future_status::ready, status);

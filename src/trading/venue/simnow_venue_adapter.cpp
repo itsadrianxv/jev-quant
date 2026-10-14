@@ -504,9 +504,11 @@ struct SimNowVenueAdapter::Impl {
 SimNowVenueAdapter::SimNowVenueAdapter(MarketDataConsumer* m,OrderGateway* g,SimNowConfig c,StateSink s,std::unique_ptr<Ctp::Transport> t)
     : impl_(std::make_unique<Impl>(m,g,std::move(c),std::move(s),std::move(t))) {}
 SimNowVenueAdapter::~SimNowVenueAdapter() { stop(); }
-void SimNowVenueAdapter::start() {
+void SimNowVenueAdapter::prepare() {
     auto& i=*impl_;
-    if(i.used) throw std::logic_error("SimNow adapter cannot be restarted");
+    if(i.used) throw std::logic_error("SimNow adapter cannot be prepared twice");
+    if(i.market->running() || i.gateway->running())
+        throw std::logic_error("Prepare SimNow before starting business workers");
     i.started=true; i.used=true;
     i.gateway->setRequestHandler([&i](std::size_t,const auto& r){try {i.submit(r);} catch(const std::exception& e){i.fail(e.what());}});
     i.gateway->setPollHandler([&i]{i.pollOrders();});
@@ -515,33 +517,41 @@ void SimNowVenueAdapter::start() {
         i.transport->start(i.config,
             [&i](auto e){i.enqueue(i.trader_events,std::move(e));},
             [&i](auto e){i.enqueue(i.market_events,std::move(e));});
-        // TODO(lifecycle): Move component startup and shutdown orchestration to main().
-        i.market->start();
-        i.gateway->start();
-        std::unique_lock lock(i.mutex);
-        const auto ok=i.changed.wait_for(lock,i.config.startup_timeout,[&]{return i.active.load() || i.fatal.load();});
-        if(!ok || i.fatal) {
-            lock.unlock();
-            if(!ok) { i.market->stop(); i.gateway->stop(); i.fail("SimNow startup timed out"); }
-            throw std::runtime_error(failure());
-        }
     } catch(...) { stop(); throw; }
 }
-void SimNowVenueAdapter::stop() {
+void SimNowVenueAdapter::waitUntilReady() {
     auto& i=*impl_;
-    if(!i.started) return;
-    i.stopping=true;
-    i.market->stop();
+    if(!i.started || !i.market->running() || !i.gateway->running())
+        throw std::logic_error("SimNow readiness requires prepared transport and running workers");
+    std::unique_lock lock(i.mutex);
+    const auto ok=i.changed.wait_for(lock,i.config.startup_timeout,[&]{return i.active.load() || i.fatal.load();});
+    if(!ok || i.fatal) {
+        lock.unlock();
+        // The gateway still owns account state until the caller joins it.
+        if(!ok) i.signalFailure("SimNow startup timed out");
+        throw std::runtime_error(failure());
+    }
+}
+void SimNowVenueAdapter::quiesce() {
+    auto& i=*impl_;
+    if(!i.started || i.stopping.exchange(true)) return;
     if(i.gateway->running()) {
         std::unique_lock lock(i.mutex);
         const auto ok=i.changed.wait_for(lock,i.config.shutdown_timeout,[&]{return i.stop_done;});
         lock.unlock();
-        i.gateway->stop();
-        if(!ok) i.fail("Shutdown timeout; order state unresolved");
+        if(!ok) i.signalFailure("Shutdown timeout; order state unresolved");
     }
+}
+void SimNowVenueAdapter::stop() {
+    auto& i=*impl_;
+    if(i.market->running() || i.gateway->running())
+        throw std::logic_error("Join business workers before stopping SimNow");
+    if(!i.started) return;
+    i.stopping=true;
     i.transport->stop();
     i.market->setPollHandler({});
     i.gateway->setPollHandler({}); i.gateway->setRequestHandler({});
+    i.state(false);
     i.active=false; i.started=false;
     std::osyncstream(std::clog)<<"event=simnow_stopped position="<<i.net_position.load()<<" unresolved="<<i.outstanding()<<'\n';
 }

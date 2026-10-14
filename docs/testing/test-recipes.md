@@ -204,3 +204,17 @@ names read as scenario-plus-expectation sentences.
 - `SimexAdapter` (requires `JEV_ENABLE_SIMEX=ON`): loopback UDP snapshots with
   the gateway stopped; TCP new orders despite unusable depth, with invalid
   quantity and duplicate-order rejection retained. No live venue is used.
+
+## Explicit component lifecycle (integration layer)
+
+- `SimNowAdapter.PrepareLeavesBothBusinessWorkersStopped`: preparing transport
+  cannot start workers or complete login; readiness requires explicit starts.
+- `SimNowAdapter.CleansUpWhenOnlyTheMarketWorkerStarted`: partial startup cleanup
+  joins the live worker before releasing callbacks and destroying the adapter.
+- `SimNowAdapter.QuiesceLeavesWorkerJoinsToTheCaller`: quiesce completes venue
+  shutdown work without joining the gateway; stop rejects live workers.
+- Existing SimNow startup rejection, login timeout, cancellation confirmation,
+  cancellation fill, and unresolved-order timeout tests run through the explicit
+  prepare/start/wait/quiesce/join/stop sequence.
+- Simex fixtures verify prepare leaves both workers stopped; the Binance offline
+  harness joins both workers before releasing adapter state.

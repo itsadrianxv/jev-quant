@@ -70,6 +70,11 @@ Provider failures are counted separately. Hold is a valid model decision, not pr
 - Missing last trade, session volume, price limits, open interest, and account amounts are sent to Jev as unavailable values, not invented market observations. PnL remains the core's internal price-difference-times-quantity measure, without currency conversion or contract multiplier accounting.
 - Disconnects, malformed frames, inconsistent book updates, sequence gaps, bounded-buffer overflow, and feed timeout are fatal. Orders with unknown execution status are not retried. Stopping locally does not cancel working orders at the venue.
 
+`prepare()` opens the sockets and installs the market/order callbacks without
+starting either business worker. Main starts both workers explicitly. On exit,
+main joins them before `stop()` closes sockets and clears callbacks; this order
+also applies to exception cleanup. The adapter does not own worker lifetimes.
+
 ## Companion simex corrections
 
 The shared queue publishes slots with atomic acquire/release synchronization. Snapshot reads and mutations use a mutex. Queue overflow fails the runtime instead of dropping the remaining output batch, so the runtime and publisher sequence counts cannot silently diverge. TCP uses bounded nonblocking polling for partial frames, independently sends asynchronous responses, and joins with an idle client still connected. Private responses are restricted to the configured participant. UDP sends are checked, snapshot datagrams are size-bounded, and the standalone server observes runtime/transport health.

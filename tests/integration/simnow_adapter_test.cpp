@@ -341,7 +341,7 @@ class SimNowAdapter : public ::testing::Test {
   protected:
     void arrange(std::function<void(Fake&)> setup) { setup_ = std::move(setup); }
 
-    void startAdapter() {
+    void prepareAdapter() {
         auto transport = std::make_unique<Fake>();
         fake_ = transport.get();
         if (setup_) setup_(*fake_);
@@ -359,8 +359,29 @@ class SimNowAdapter : public ::testing::Test {
                 &market_, &gateway_, config,
                 [this](bool ready, AccountState, double) { ready_.store(ready); },
                 std::move(transport));
-        adapter_->start();
+        adapter_->prepare();
     }
+
+    void startAdapter() {
+        try {
+            prepareAdapter();
+            market_.start();
+            gateway_.start();
+            adapter_->waitUntilReady();
+        } catch (...) {
+            stopAdapter();
+            throw;
+        }
+    }
+
+    void stopAdapter() {
+        market_.stop();
+        if (adapter_) adapter_->quiesce();
+        gateway_.stop();
+        if (adapter_) adapter_->stop();
+    }
+
+    void TearDown() override { stopAdapter(); }
 
     void send(Common::OrderId id = 1,
               Common::OrderOffset offset = Common::OrderOffset::OPEN,
@@ -419,6 +440,46 @@ class SimNowAdapter : public ::testing::Test {
     std::atomic<bool> ready_{false};
 };
 
+TEST_F(SimNowAdapter, PrepareLeavesBothBusinessWorkersStopped) {
+    prepareAdapter();
+    EXPECT_FALSE(market_.running());
+    EXPECT_FALSE(gateway_.running());
+    EXPECT_FALSE(ready_.load());
+    EXPECT_EQ(0, fake_->query_count.load());
+    EXPECT_EQ(0, fake_->subscriptions.load());
+    EXPECT_THROW(adapter_->waitUntilReady(), std::logic_error);
+    EXPECT_THROW(adapter_->prepare(), std::logic_error);
+    stopAdapter();
+    EXPECT_FALSE(adapter_->failed());
+}
+
+TEST_F(SimNowAdapter, CleansUpWhenOnlyTheMarketWorkerStarted) {
+    prepareAdapter();
+    try {
+        market_.start();
+        throw std::runtime_error("Injected startup failure before gateway start");
+    } catch (const std::runtime_error&) {
+        stopAdapter();
+    }
+    EXPECT_FALSE(market_.running());
+    EXPECT_FALSE(gateway_.running());
+    EXPECT_FALSE(adapter_->running());
+    EXPECT_FALSE(adapter_->failed());
+    adapter_.reset(); // No callback may outlive its target.
+}
+
+TEST_F(SimNowAdapter, QuiesceLeavesWorkerJoinsToTheCaller) {
+    startAdapter();
+    market_.stop();
+    adapter_->quiesce();
+    EXPECT_TRUE(gateway_.running());
+    EXPECT_FALSE(ready_.load());
+    EXPECT_THROW(adapter_->stop(), std::logic_error);
+    stopAdapter();
+    EXPECT_FALSE(gateway_.running());
+    EXPECT_FALSE(adapter_->running());
+}
+
 TEST_F(SimNowAdapter, SubscribesToTheConfiguredInstrumentOnStartup) {
     arrange([](Fake& fake) { fake.market_login_id = 0; });
     startAdapter();
@@ -427,7 +488,7 @@ TEST_F(SimNowAdapter, SubscribesToTheConfiguredInstrumentOnStartup) {
     EXPECT_EQ(1, fake_->subscriptions.load());
 
     fake_->emit(Kind::MarketLogin, CThostFtdcRspUserLoginField{}, 0);
-    adapter_->stop();
+    stopAdapter();
 
     EXPECT_FALSE(adapter_->failed());
     EXPECT_EQ(1, fake_->subscriptions.load());
@@ -456,12 +517,12 @@ TEST_F(SimNowAdapter, ProcessesQuotesWhileOrderSubmissionIsBlocked) {
         EXPECT_EQ(Ctp::price(799), firstDepthSnapshot().bids_[0].price_);
     } catch (...) {
         release.set_value();
-        adapter_->stop();
+        stopAdapter();
         throw;
     }
     release.set_value();
     awaitFirstInsert();
-    adapter_->stop();
+    stopAdapter();
     EXPECT_FALSE(adapter_->failed());
 }
 
@@ -479,7 +540,7 @@ TEST_F(SimNowAdapter, DisablesAndRestoresTradingWhenQuotesBecomeInvalidAndRecove
     waitUntil([&] { return ready_.load(); }, [&] { return "ready=" + std::to_string(ready_.load()); });
     send(2);
     awaitFirstInsert();
-    adapter_->stop();
+    stopAdapter();
     EXPECT_FALSE(adapter_->failed());
 }
 
@@ -491,7 +552,7 @@ TEST_F(SimNowAdapter, RejectsOrdersAndDisablesTradingAfterAMarketDisconnect) {
     send();
     EXPECT_EQ(Exchange::ClientResponseType::REJECTED, response().type_);
     EXPECT_EQ(0U, fake_->count());
-    adapter_->stop();
+    stopAdapter();
 }
 
 TEST_F(SimNowAdapter, RefusesStartupWhenMarketAndTradingDaysDisagree) {
@@ -549,7 +610,7 @@ TEST_F(SimNowAdapter, RetriesAStartupQueryAfterAThrottleRejection) {
     EXPECT_EQ(Ctp::price(800), snapshot.bids_[0].price_);
     EXPECT_EQ(Common::Price_INVALID, snapshot.bids_[1].price_);
 
-    adapter_->stop();
+    stopAdapter();
 
     EXPECT_FALSE(adapter_->failed());
 }
@@ -669,7 +730,7 @@ TEST_F(SimNowAdapter, ClosesThePositionWithACloseTodayOrder) {
     EXPECT_EQ(Exchange::ClientResponseType::FILLED, response().type_);
     EXPECT_EQ(0, adapter_->position());
 
-    adapter_->stop();
+    stopAdapter();
 
     EXPECT_FALSE(adapter_->failed());
 }
@@ -679,7 +740,7 @@ TEST_F(SimNowAdapter, CancelsTheLiveOrderAndReportsCanceledAtShutdown) {
     send();
     awaitFirstInsert();
 
-    adapter_->stop();
+    stopAdapter();
 
     EXPECT_EQ(1u, fake_->canceled.size());
     EXPECT_EQ(0, adapter_->position());
@@ -693,7 +754,7 @@ TEST_F(SimNowAdapter, ReportsACancelFilledAtShutdownAsAnExecution) {
     send();
     awaitFirstInsert();
 
-    adapter_->stop();
+    stopAdapter();
 
     EXPECT_EQ(1u, fake_->canceled.size());
     EXPECT_EQ(1, adapter_->position());
@@ -707,7 +768,7 @@ TEST_F(SimNowAdapter, FailsWhenShutdownCannotConfirmTheCancel) {
     send();
     awaitFirstInsert();
 
-    adapter_->stop();
+    stopAdapter();
 
     EXPECT_EQ(1u, fake_->canceled.size());
     EXPECT_TRUE(adapter_->failed());
@@ -725,7 +786,7 @@ TEST_F(SimNowAdapter, FailsAndRejectsRequestsAfterADisconnect) {
     EXPECT_EQ(Exchange::ClientResponseType::REJECTED, response().type_);
     EXPECT_EQ(0u, fake_->count());
 
-    adapter_->stop();
+    stopAdapter();
 }
 
 TEST_F(SimNowAdapter, FailsWhenTheTradingDayChangesUnderneath) {
@@ -736,7 +797,7 @@ TEST_F(SimNowAdapter, FailsWhenTheTradingDayChangesUnderneath) {
     fake_->emit(Kind::Depth, depth);
     awaitFailure();
 
-    adapter_->stop();
+    stopAdapter();
 }
 
 TEST_F(SimNowAdapter, ReportsAnInsertSdkFailureAsARejection) {
@@ -747,7 +808,7 @@ TEST_F(SimNowAdapter, ReportsAnInsertSdkFailureAsARejection) {
     EXPECT_EQ(Exchange::ClientResponseType::REJECTED, response().type_);
     EXPECT_EQ(0, adapter_->position());
 
-    adapter_->stop();
+    stopAdapter();
 
     EXPECT_FALSE(adapter_->failed());
 }
@@ -772,7 +833,7 @@ TEST_F(SimNowAdapter, ReportsAnInsertErrorEventAsARejection) {
 
     EXPECT_EQ(Exchange::ClientResponseType::REJECTED, response().type_);
 
-    adapter_->stop();
+    stopAdapter();
 
     EXPECT_FALSE(adapter_->failed());
     EXPECT_EQ(0u, responses_.size());
@@ -789,7 +850,7 @@ TEST_F(SimNowAdapter, ReportsAnInsertRejectedSubmitStatusAsARejection) {
 
     EXPECT_EQ(Exchange::ClientResponseType::REJECTED, response().type_);
 
-    adapter_->stop();
+    stopAdapter();
 
     EXPECT_FALSE(adapter_->failed());
     EXPECT_EQ(0u, responses_.size());

@@ -21,9 +21,23 @@ int main() {
     Trading::OrderGateway gateway(1, &requests, &responses);
     auto config = Trading::BinanceUmFuturesVenueAdapter::loadConfigFromEnv(".env", 0);
     Trading::BinanceUmFuturesVenueAdapter adapter(&market_data, &gateway, std::move(config));
-    adapter.start();
-    std::this_thread::sleep_for(std::chrono::seconds(2));
-    adapter.stop();
+    const auto shutdown = [&] {
+        market_data.stop();
+        adapter.quiesce();
+        gateway.stop();
+        adapter.stop();
+    };
+    try {
+        adapter.prepare();
+        market_data.start();
+        gateway.start();
+        adapter.waitUntilReady();
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+    } catch (...) {
+        shutdown();
+        throw;
+    }
+    shutdown();
     std::cout << "Binance UM Futures connectivity smoke passed\n";
     return 0;
 }

@@ -13,7 +13,7 @@ configure, register with, start, or stop a logger.
 | TradeEngine | TradeEngine | `trade-engine-<client_id>.log` | Engine worker or synchronous caller |
 | TradeEngine TTT | TTT | `ttt-<client_id>.log` | Same engine caller, separate queue |
 | JevWorker | JevWorker | `jev-worker.log` | Jev worker or synchronous caller |
-| Binance adapter | Venue | `venue-<ticker_id>.log` | Caller of start and stop |
+| Binance adapter | Venue | `venue-<ticker_id>.log` | Caller of prepare and stop |
 
 Registration leaves a handle unbound. Worker components bind ordinary logs in
 `run()`. First use binds synchronous and TTT logging, including
@@ -39,16 +39,31 @@ Response sequence numbers come from the next expected response,
 independently of request sequence numbers. The queues terminate on overflow,
 matching the existing fail-fast business-queue policy. JSON event copies can
 allocate; decoding into typed events remains a TODO. Venue lifecycle logs stay
-on the thread that calls `start()` and `stop()`; its constructor does not bind.
-Its destructor stops and joins producers before destroying callback state.
+on the thread that calls `prepare()` and `stop()`; its constructor does not bind.
+The owner must join both business workers before stopping or destroying the
+adapter. The adapter only joins its own transport threads.
 
 The live composition registers the Venue channel only for Binance. Simex and
 SimNow also publish market updates on their market workers and order responses
 on their gateway workers. Simex keeps UDP/book state separate from TCP/order
 state and no longer rejects new orders based on market usability. SimNow keeps
 readiness, trading-day checks, and failure coordination inside the adapter;
-neither worker component references the other. Venue adapters still orchestrate
-worker lifetimes; moving orchestration to main is a follow-up TODO.
+neither worker component references the other. `trading_main.cpp` now owns both
+business worker lifetimes. `venue.prepare()` installs callbacks and prepares
+transport resources, which can include network connections and SDK/WebSocket
+threads, but never starts the market or gateway worker. It does not guarantee
+trading readiness. Main starts each worker, then calls `waitUntilReady()`;
+SimNow waits for login, startup queries, subscription, and a valid quote, while
+Binance and Simex retain their existing readiness behavior.
+
+On exit, main disables SimNow trading, joins the market worker, calls
+`venue.quiesce()` while the gateway can still cancel orders and consume replies,
+joins the gateway, and finally calls `venue.stop()` to release transport and
+clear callbacks. The engine stays alive through cancellation to consume replies.
+The same cleanup runs on startup or runtime exceptions before stack unwinding
+can destroy callback targets. Calling adapter `stop()` with a running business
+worker throws `std::logic_error`; callers must join first. Adapter destruction
+has the same precondition.
 The synchronous benchmark registers only TTT, preserving its existing channel
 selection. Tests register
 only the channels they exercise. No component waits for producer counts;

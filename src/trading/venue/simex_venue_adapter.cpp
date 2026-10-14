@@ -160,8 +160,10 @@ struct SimexVenueAdapter::Impl {
     }
     ~Impl() { stop(); }
 
-    void start() {
+    void prepare() {
         if (started) throw std::logic_error("Simex adapter requires a fresh process for each run");
+        if (market->running() || gateway->running())
+            throw std::logic_error("Prepare Simex before starting business workers");
         started = true;
         try {
             udp = ::socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
@@ -185,20 +187,17 @@ struct SimexVenueAdapter::Impl {
             gateway->setRequestHandler([this](std::size_t, const auto& request) { submit(request); });
             gateway->setPollHandler([this] { pollOrders(); });
             market->setPollHandler([this] { pollMarket(); });
-            // TODO(lifecycle): Move component startup and shutdown orchestration to main().
             running.store(true);
-            market->start();
-            gateway->start();
             std::clog << "event=simex_connected state=waiting_for_market_data\n";
         } catch (...) { stop(); throw; }
     }
 
     void stop() {
+        if (market->running() || gateway->running())
+            throw std::logic_error("Join business workers before stopping Simex");
         running.store(false);
-        gateway->stop();
         gateway->setRequestHandler({});
         gateway->setPollHandler({});
-        market->stop();
         market->setPollHandler({});
         if (tcp >= 0) { ::close(tcp); tcp = -1; }
         if (udp >= 0) { ::close(udp); udp = -1; }
@@ -525,7 +524,7 @@ struct SimexVenueAdapter::Impl {
 SimexVenueAdapter::SimexVenueAdapter(MarketDataConsumer* market, OrderGateway* orders, SimexVenueConfig config)
     : impl_(std::make_unique<Impl>(market, orders, std::move(config))) {}
 SimexVenueAdapter::~SimexVenueAdapter() = default;
-auto SimexVenueAdapter::start() -> void { impl_->start(); }
+auto SimexVenueAdapter::prepare() -> void { impl_->prepare(); }
 auto SimexVenueAdapter::stop() -> void { impl_->stop(); }
 auto SimexVenueAdapter::running() const noexcept -> bool { return impl_->running.load(); }
 }  // namespace Trading
