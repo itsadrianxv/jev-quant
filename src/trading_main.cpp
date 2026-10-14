@@ -49,6 +49,7 @@ auto readJson(const std::string& path) -> nlohmann::json {
 
 int main(int argc, char** argv) {
     try {
+        // parse config value
         const std::string config_path = argc > 1 ? argv[1] : "config.json";
         const auto document = readJson(config_path);
         const auto runtime = document.value("runtime", nlohmann::json::object());
@@ -98,8 +99,11 @@ int main(int argc, char** argv) {
                 &market_updates, &decisions,
                 logger.registerProducer("TradeEngine", "trade-engine-" + std::to_string(client_id) + ".log"),
                 logger.registerProducer("TTT", "ttt-" + std::to_string(client_id) + ".log"));
+                // log producer for logging Tick-To-Trade latency data
+
         engine.setDecisionOrderQuantity(order_qty);
         engine.setVerboseMarketData(verbose_market_data);
+
         if (simnow) engine.enableSingleOrderVenue();
         if (simex || simnow) {
             engine.enableSimexConstraints();
@@ -129,8 +133,8 @@ int main(int argc, char** argv) {
                 }
             };
         }
-        engine.attachJevEvaluationQueue(&evaluations,
-                                                                          std::chrono::milliseconds(interval_ms), ticker_id);
+
+        engine.attachJevEvaluationQueue(&evaluations, std::chrono::milliseconds(interval_ms), ticker_id);
 
         Trading::MarketDataConsumer market_data(client_id, &market_updates,
                 logger.registerProducer("MarketData", "market-data-" + std::to_string(client_id) + ".log"),

@@ -14,3 +14,4 @@ build*
 logs
 /flows/
 /config.simnow.local.json
+.sync
