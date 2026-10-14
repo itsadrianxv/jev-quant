@@ -7,7 +7,7 @@
 #include "exchange/order_server/client_response.h"
 #include "trading/market_data/market_data_consumer.h"
 #include "trading/order_gw/order_gateway.h"
-#include "trading/venue/venue_adapter.h"
+#include "trading/venue/binance/binance_um_futures_adapter.h"
 
 int main() {
     if (std::getenv("BINANCE_UM_FUTURES_SMOKE") == nullptr) {

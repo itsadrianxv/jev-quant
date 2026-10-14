@@ -20,12 +20,12 @@
 #include "trading/strategy/jev_http_client.h"
 #include "trading/strategy/jev_worker.h"
 #include "trading/strategy/trade_engine.h"
-#include "trading/venue/venue_adapter.h"
+#include "trading/venue/binance/binance_um_futures_adapter.h"
 #ifdef JEV_ENABLE_SIMNOW
-#include "trading/venue/simnow_venue_adapter.h"
+#include "trading/venue/simnow/simnow_venue_adapter.h"
 #endif
 #ifdef JEV_ENABLE_SIMEX
-#include "trading/venue/simex_venue_adapter.h"
+#include "trading/venue/simex/simex_venue_adapter.h"
 #endif
 
 namespace {
@@ -202,7 +202,7 @@ int main(int argc, char** argv) {
             jev_worker.stop();
             logger.stop();
         };
-        try {
+        const auto startup = [&] {
             logger.start();
             std::clog << "Preparing " << venue_type << " venue adapter\n";
             venue->prepare();
@@ -218,6 +218,9 @@ int main(int argc, char** argv) {
             if (measurement) measurement->arm();
             std::clog << venue_type << " venue adapter connected\n";
             std::clog << "jev_trading running\n";
+        };
+        try {
+            startup();
 
             const auto started_at = std::chrono::steady_clock::now();
             while (!stopping.load(std::memory_order_acquire) &&
@@ -232,15 +235,9 @@ int main(int argc, char** argv) {
         }
         shutdown();
         if (measurement) {
-            bool healthy = true;
-#ifdef JEV_ENABLE_SIMNOW
-            healthy = !static_cast<Trading::SimNowVenueAdapter*>(venue.get())->failed();
-#endif
-            measurement->write(perf_directory, healthy, jev_worker.failureCount());
+            measurement->write(perf_directory, !venue->failed(), jev_worker.failureCount());
         }
-#ifdef JEV_ENABLE_SIMNOW
-        if (simnow && static_cast<Trading::SimNowVenueAdapter*>(venue.get())->failed()) return 1;
-#endif
+        if (venue->failed()) return 1;
         if (simex) {
             std::clog << "event=simex_live_result market_ready=" << market_ready.load()
                       << " decisions=" << valid_decisions.load() << " executions=" << executions.load()

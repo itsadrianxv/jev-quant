@@ -1,4 +1,4 @@
-#include "trading/venue/simex_venue_adapter.h"
+#include "trading/venue/simex/simex_venue_adapter.h"
 #include "transport/protocol.h"
 
 #include <arpa/inet.h>

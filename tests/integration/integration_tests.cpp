@@ -34,7 +34,7 @@
 #include "trading/strategy/jev_http_client.h"
 #include "trading/strategy/trade_engine.h"
 #include "trading/strategy/jev_worker.h"
-#include "trading/venue/venue_adapter.h"
+#include "trading/venue/binance/binance_um_futures_adapter.h"
 
 #ifndef JEV_TEST_MOCK_SERVER_PATH
 #define JEV_TEST_MOCK_SERVER_PATH "integration/mock_jev_server.py"

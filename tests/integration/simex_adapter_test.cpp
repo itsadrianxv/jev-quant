@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <thread>
 
-#include "trading/venue/simex_venue_adapter.h"
+#include "trading/venue/simex/simex_venue_adapter.h"
 #include "transport/protocol.h"
 
 namespace {

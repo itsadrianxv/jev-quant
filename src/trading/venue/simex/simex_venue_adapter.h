@@ -4,6 +4,9 @@
 #include <memory>
 #include <string>
 #include "trading/venue/venue_adapter.h"
+#include "trading/market_data/market_data_consumer.h"
+#include "trading/order_gw/order_gateway.h"
+#include <nlohmann/json.hpp>
 
 namespace Trading {
 

@@ -1,6 +1,11 @@
+#include "trading/venue/simnow/ctp_mapping.h"
+#include "trading/venue/simnow/ctp_transport.h"
 #include <gtest/gtest.h>
 
-#include "trading/venue/simnow_venue_adapter.h"
+#include "trading/venue/simnow/simnow_venue_adapter.h"
+#include "trading/market_data/market_data_consumer.h"
+#include "trading/order_gw/order_gateway.h"
+#include "trading/performance/measurement.h"
 #include "trading/strategy/trade_engine.h"
 #include "trading/strategy/jev_http_client.h"
 
@@ -838,6 +843,9 @@ TEST_F(SimNowAdapter, FailsWhenShutdownCannotConfirmTheCancel) {
 
 TEST_F(SimNowAdapter, FailsAndRejectsRequestsAfterADisconnect) {
     startAdapter();
+    const VenueAdapter& venue = *adapter_;
+    EXPECT_FALSE(venue.failed());
+    EXPECT_TRUE(venue.failure().empty());
 
     fake_->emit(Kind::Disconnected, {}, 0, 4097);
     awaitFailure();
@@ -847,7 +855,12 @@ TEST_F(SimNowAdapter, FailsAndRejectsRequestsAfterADisconnect) {
     EXPECT_EQ(Exchange::ClientResponseType::REJECTED, response().type_);
     EXPECT_EQ(0u, fake_->count());
 
+    const auto failure = venue.failure();
+    EXPECT_EQ("CTP disconnected; execution status may be unknown", failure);
     stopAdapter();
+    EXPECT_FALSE(venue.running());
+    EXPECT_TRUE(venue.failed());
+    EXPECT_EQ(failure, venue.failure());
 }
 
 TEST_F(SimNowAdapter, FailsWhenTheTradingDayChangesUnderneath) {

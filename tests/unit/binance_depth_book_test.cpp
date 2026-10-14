@@ -10,7 +10,7 @@
 #include <nlohmann/json.hpp>
 
 #include "exchange/market_data/market_update.h"
-#include "trading/venue/binance_depth_book.h"
+#include "trading/venue/binance/binance_depth_book.h"
 
 namespace {
 

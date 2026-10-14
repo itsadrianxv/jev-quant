@@ -22,9 +22,9 @@ add_library(jev_trading_core STATIC
         src/trading/strategy/jev_config.cpp
         src/trading/strategy/order_manager.cpp
         src/trading/strategy/trade_engine.cpp
-        src/trading/venue/venue_adapter.cpp
-        src/trading/venue/binance_depth_book.cpp
-        src/trading/venue/binance_websocket_stream.cpp
+        src/trading/venue/binance/binance_um_futures_adapter.cpp
+        src/trading/venue/binance/binance_depth_book.cpp
+        src/trading/venue/binance/binance_websocket_stream.cpp
         src/tools/jev_variant.cpp
 )
 target_link_libraries(jev_trading_core PUBLIC jev_domain)
@@ -51,7 +51,14 @@ if(JEV_ENABLE_SIMNOW)
     endforeach()
     set_target_properties(ctp_trader PROPERTIES IMPORTED_LOCATION "${CTP_SDK}/lib/linux64/thosttraderapi_se.so")
     set_target_properties(ctp_md PROPERTIES IMPORTED_LOCATION "${CTP_SDK}/lib/linux64/thostmduserapi_se.so")
-    target_sources(jev_trading_core PRIVATE src/trading/venue/simnow_venue_adapter.cpp src/trading/venue/ctp_transport.cpp)
+    target_sources(jev_trading_core PRIVATE
+        src/trading/venue/simnow/simnow_venue_adapter.cpp
+        src/trading/venue/simnow/ctp_transport.cpp
+        src/trading/venue/simnow/ctp_mapping.cpp
+        src/trading/venue/simnow/simnow_config.cpp
+        src/trading/venue/simnow/simnow_control.cpp
+        src/trading/venue/simnow/simnow_market_data.cpp
+        src/trading/venue/simnow/simnow_execution.cpp)
     target_include_directories(jev_trading_core SYSTEM PUBLIC "${CTP_SDK}/headers")
     target_link_libraries(jev_trading_core PUBLIC ctp_trader ctp_md)
     target_compile_definitions(jev_trading_core PUBLIC JEV_ENABLE_SIMNOW=1)
@@ -62,7 +69,7 @@ if(JEV_ENABLE_SIMEX)
         message(FATAL_ERROR "The simex v1 integration requires 64-bit little-endian Linux/WSL")
     endif()
     include(cmake/SimexProtocol.cmake)
-    target_sources(jev_trading_core PRIVATE src/trading/venue/simex_venue_adapter.cpp)
+    target_sources(jev_trading_core PRIVATE src/trading/venue/simex/simex_venue_adapter.cpp)
     target_include_directories(jev_trading_core PRIVATE "${JEV_SIMEX_SOURCE_DIR}/src")
     target_compile_definitions(jev_trading_core PUBLIC JEV_ENABLE_SIMEX=1)
 endif()
