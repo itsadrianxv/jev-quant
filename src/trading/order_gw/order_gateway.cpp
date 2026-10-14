@@ -59,6 +59,9 @@ auto OrderGateway::processPending() -> bool {
 
     bool processed = false;
     while (const auto* request = outgoing_requests_->getNextToRead()) {
+        const auto received_ns = request->trace_.t[4] ? Common::nowSteadyNs() : 0;
+        auto observed = *request;
+        if (observed.trace_.t[4]) observed.trace_.t[5] = received_ns;
         const auto sequence = next_outgoing_seq_num_++;
         if (log_handle_) {
             log_handle_->logFixed(Common::LogLevel::INFO,
@@ -70,7 +73,8 @@ auto OrderGateway::processPending() -> bool {
                                   });
         }
         if (request_handler_) {
-            request_handler_(sequence, *request);
+            if (observed.trace_.t[4]) observed.trace_.t[6] = Common::nowSteadyNs();
+            request_handler_(sequence, observed);
         }
         outgoing_requests_->updateReadIndex();
         processed = true;
@@ -106,7 +110,6 @@ auto OrderGateway::publishClientResponse(
         std::terminate();
     }
     *slot = response;
-    slot->published_ns_ = Common::nowSteadyNs();
     incoming_responses_->updateWriteIndex();
     ++next_exp_seq_num_;
     if (log_handle_) {

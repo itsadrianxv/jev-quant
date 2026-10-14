@@ -25,7 +25,7 @@
 #include "order_manager.h"
 #include "position_keeper.h"
 #include "risk_manager.h"
-#include "processing_observer.h"
+#include "trading/performance/measurement.h"
 
 namespace Trading {
 
@@ -45,8 +45,7 @@ class TradeEngine final {
                             Exchange::ClientResponseLFQueue* incoming_responses,
                             Exchange::MarketUpdateLFQueue* incoming_market_updates,
                             JevDecisionLFQueue* incoming_jev_decisions,
-                            std::optional<Common::AsyncLogger::ProducerHandle> log_handle = std::nullopt,
-                            std::optional<Common::AsyncLogger::ProducerHandle> ttt_handle = std::nullopt);
+                            std::optional<Common::AsyncLogger::ProducerHandle> log_handle = std::nullopt);
 
     TradeEngine(Exchange::ClientRequestLFQueue* outgoing_requests,
                             Exchange::ClientResponseLFQueue* incoming_responses,
@@ -66,10 +65,8 @@ class TradeEngine final {
     /// Drain available queues once in response, market, and Jev order.
     auto processPending() -> bool;
 
-    /// Configure before start. Null disables stage timing and sample collection.
-    auto setProcessingObserver(ProcessingObserver* observer) noexcept -> void {
-        processing_observer_ = observer;
-    }
+    // Install before start; measurement must outlive all workers.
+    void setMeasurement(Measurement* measurement) noexcept { measurement_ = measurement; }
 
     /// Send a request to the OrderGateway queue.
     auto sendClientRequest(const Exchange::ClientRequest& request) -> void;
@@ -160,18 +157,12 @@ class TradeEngine final {
     auto handleMarketUpdate(const Exchange::MarketUpdate& update,
                                                     const MarketOrderBook& book) -> void;
     auto handleJevDecision(const JevDecision& decision) -> void;
-    auto recordLatency(std::string_view event, std::uint64_t evaluation_id,
-                       Common::TickerId ticker_id, std::uint64_t elapsed_ns)
-            -> void;
     auto recordDecisionDrop(std::string_view event, const JevDecision& decision)
             -> void;
 
-    /// Dedicated producer for tick-to-trade latency records. Its file is the
-    /// single output consumed by offline percentile analysis.
-    std::optional<Common::AsyncLogger::ProducerHandle> ttt_handle_;
-    ProcessingObserver* processing_observer_ = nullptr;
-    std::uint32_t observed_request_count_ = 0;
-    std::uint32_t observed_request_type_ = 0;
+    Measurement* measurement_ = nullptr;
+    std::array<Common::PerformanceTrace, Common::ME_MAX_TICKERS> latest_traces_{};
+    Common::PerformanceTrace decision_trace_{};
 
     const Common::ClientId client_id_ = Common::ClientId_INVALID;
     PositionKeeper position_keeper_;

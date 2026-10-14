@@ -557,100 +557,6 @@ TEST(JevHttpDecisionPathTest, EvaluatesDecisionsAgainstTheLocalMockServer) {
     EXPECT_DOUBLE_EQ(0.7, decision.confidence_);
 }
 
-TEST(TttInstrumentationTest, RecordsLatencyEventsForStampedMessages) {
-    const auto output_dir = tempDir("jev_quant_ttt_instrumentation");
-
-    Common::AsyncLogger logger(output_dir, 64, std::chrono::milliseconds(1));
-    Exchange::ClientRequestLFQueue requests(32);
-    Exchange::ClientResponseLFQueue responses(32);
-    Exchange::MarketUpdateLFQueue market_updates(32);
-    Trading::JevDecisionLFQueue decisions(32);
-    Trading::TradeEngine engine(7, Trading::RiskLimits{10, 10, 0.0}, &requests,
-                                &responses, &market_updates, &decisions, std::nullopt,
-                                logger.registerProducer("TTT", "ttt-7.log"));
-    logger.start();
-
-    const std::uint64_t past = Common::nowSteadyNs() - 5'000'000ULL;
-
-    auto* update = market_updates.getNextToWriteTo();
-    update->type_ = Exchange::MarketUpdateType::DEPTH_SNAPSHOT;
-    update->ticker_id_ = 0;
-    update->published_ns_ = past;
-    update->depth_snapshot_.bids_[0] = {100, 2};
-    update->depth_snapshot_.asks_[0] = {101, 3};
-    market_updates.updateWriteIndex();
-
-    auto* decision = decisions.getNextToWriteTo();
-    decision->evaluation_id_ = 1;
-    decision->ticker_id_ = 0;
-    decision->bias_ = Trading::JevBias::LONG;
-    decision->intent_ = Trading::JevIntent::OPEN;
-    decision->enqueued_ns_ = past;
-    decisions.updateWriteIndex();
-    engine.registerEvaluation(0, 1);
-
-    ASSERT_TRUE(engine.processPending());
-
-    auto* request = requests.getNextToWriteTo();
-    ASSERT_NE(nullptr, request);
-    request->enqueued_ns_ = past;
-    requests.updateWriteIndex();
-
-    auto* response = responses.getNextToWriteTo();
-    response->type_ = Exchange::ClientResponseType::ACCEPTED;
-    response->client_id_ = 7;
-    response->ticker_id_ = 0;
-    response->client_order_id_ = request->order_id_;
-    response->published_ns_ = past;
-    responses.updateWriteIndex();
-
-    ASSERT_TRUE(engine.processPending());
-    logger.stop();
-
-    const std::string ttt_text = readWholeFile(output_dir / "ttt-7.log");
-    EXPECT_NE(std::string::npos, ttt_text.find("event=ttt_market_data_consumed"))
-            << "observed file: " << ttt_text;
-    EXPECT_NE(std::string::npos, ttt_text.find("event=ttt_decision_consumed"))
-            << "observed file: " << ttt_text;
-    EXPECT_NE(std::string::npos, ttt_text.find("event=ttt_decision_to_order"))
-            << "observed file: " << ttt_text;
-    EXPECT_NE(std::string::npos, ttt_text.find("event=ttt_order_round_trip"))
-            << "observed file: " << ttt_text;
-    EXPECT_NE(std::string::npos, ttt_text.find("elapsed_ns="))
-            << "observed file: " << ttt_text;
-}
-
-TEST(TttInstrumentationTest, RecordsNoLatencyEventsForUnstampedMessages) {
-    const auto output_dir = tempDir("jev_quant_ttt_unstamped");
-
-    Common::AsyncLogger logger(output_dir, 64, std::chrono::milliseconds(1));
-    Exchange::ClientRequestLFQueue requests(32);
-    Exchange::ClientResponseLFQueue responses(32);
-    Exchange::MarketUpdateLFQueue market_updates(32);
-    Trading::JevDecisionLFQueue decisions(32);
-    Trading::TradeEngine engine(7, Trading::RiskLimits{10, 10, 0.0}, &requests,
-                                &responses, &market_updates, &decisions, std::nullopt,
-                                logger.registerProducer("TTT", "ttt-7.log"));
-    logger.start();
-
-    auto* decision = decisions.getNextToWriteTo();
-    decision->evaluation_id_ = 1;
-    decision->ticker_id_ = 0;
-    decision->bias_ = Trading::JevBias::LONG;
-    decision->intent_ = Trading::JevIntent::OPEN;
-    decisions.updateWriteIndex();
-    engine.registerEvaluation(0, 1);
-    ASSERT_TRUE(engine.processPending());
-
-    logger.stop();
-
-    // Unstamped messages must never produce latency records (drop records
-    // carry no elapsed_ns and are the only ttt_ lines expected here).
-    const std::string ttt_text = readWholeFile(output_dir / "ttt-7.log");
-    EXPECT_EQ(std::string::npos, ttt_text.find("elapsed_ns="))
-            << "observed file: " << ttt_text;
-}
-
 TEST(ComponentLoggingTest, InjectedHandlesWriteLifecycleRecordsFromWorkers) {
     const auto output_dir = tempDir("jev_quant_component_handles");
     Common::AsyncLogger logger(output_dir, 64, std::chrono::milliseconds(1));
@@ -736,41 +642,6 @@ TEST(ComponentLoggingTest, BinanceConstructorLeavesHandleUnbound) {
     EXPECT_NE(std::string::npos, text.find("[Venue] event=component_stopped")) << text;
 }
 
-TEST(ComponentLoggingTest, WorkerBindsOrdinaryAndTttChannelsIndependently) {
-    const auto output_dir = tempDir("jev_quant_engine_handles");
-    Common::AsyncLogger logger(output_dir, 64, std::chrono::milliseconds(1));
-    Exchange::ClientRequestLFQueue requests(8);
-    Exchange::ClientResponseLFQueue responses(8);
-    Exchange::MarketUpdateLFQueue updates(8);
-    Trading::JevDecisionLFQueue decisions(8);
-    Trading::TradeEngine engine(7, Trading::RiskLimits{10, 10, 0.0}, &requests,
-            &responses, &updates, &decisions,
-            logger.registerProducer("TradeEngine", "trade-engine-7.log"),
-            logger.registerProducer("TTT", "ttt-7.log"));
-    std::promise<void> consumed;
-    auto done = consumed.get_future();
-    engine.onMarketUpdate = [&](const auto&, const auto&) { consumed.set_value(); };
-    auto* update = updates.getNextToWriteTo();
-    update->type_ = Exchange::MarketUpdateType::DEPTH_SNAPSHOT;
-    update->ticker_id_ = 0;
-    update->published_ns_ = Common::nowSteadyNs() - 1;
-    update->depth_snapshot_.bids_[0] = {100, 2};
-    update->depth_snapshot_.asks_[0] = {101, 3};
-    updates.updateWriteIndex();
-    logger.start();
-    engine.start();
-    const auto status = done.wait_for(kWaitDeadline);
-    engine.stop();
-    logger.stop();
-    ASSERT_EQ(std::future_status::ready, status);
-    const auto ordinary = readWholeFile(output_dir / "trade-engine-7.log");
-    const auto ttt = readWholeFile(output_dir / "ttt-7.log");
-    EXPECT_NE(std::string::npos, ordinary.find("[TradeEngine] event=component_started"));
-    EXPECT_EQ(std::string::npos, ordinary.find("event=ttt_"));
-    EXPECT_NE(std::string::npos, ttt.find("[TTT] event=ttt_market_data_consumed"));
-    EXPECT_EQ(std::string::npos, ttt.find("event=component_started"));
-}
-
 TEST(ComponentLoggingTest, ExplicitlyDisabledHandlesStillPublishMessages) {
     Exchange::ClientRequestLFQueue requests(8);
     Exchange::ClientResponseLFQueue responses(8);
@@ -779,7 +650,7 @@ TEST(ComponentLoggingTest, ExplicitlyDisabledHandlesStillPublishMessages) {
     Trading::JevEvaluationStateLFQueue evaluations(8);
     Trading::MockJevDecisionProvider provider;
     Trading::TradeEngine engine(7, Trading::RiskLimits{10, 10, 0.0}, &requests,
-            &responses, &updates, &decisions, std::nullopt, std::nullopt);
+            &responses, &updates, &decisions, std::nullopt);
     Trading::MarketDataConsumer market(7, &updates, std::nullopt, true);
     Trading::OrderGateway gateway(7, &requests, &responses, std::nullopt);
     Trading::JevWorker worker(&evaluations, &decisions, &provider, std::nullopt);

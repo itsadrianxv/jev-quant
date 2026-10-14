@@ -13,6 +13,7 @@ add_library(jev_domain INTERFACE)
 target_link_libraries(jev_domain INTERFACE jev_common)
 
 add_library(jev_trading_core STATIC
+        src/trading/performance/measurement.cpp
         src/trading/market_data/market_data_consumer.cpp
         src/trading/order_gw/order_gateway.cpp
         src/trading/strategy/jev_worker.cpp
@@ -27,6 +28,13 @@ add_library(jev_trading_core STATIC
         src/tools/jev_variant.cpp
 )
 target_link_libraries(jev_trading_core PUBLIC jev_domain)
+include(CheckIncludeFileCXX)
+check_include_file_cxx("valgrind/callgrind.h" JEV_HAVE_CALLGRIND)
+if(JEV_HAVE_CALLGRIND)
+    target_compile_definitions(jev_trading_core PRIVATE JEV_HAVE_CALLGRIND=1)
+    add_executable(callgrind_scope_test tests/integration/callgrind_scope_test.cpp)
+    target_link_libraries(callgrind_scope_test PRIVATE jev_trading_core)
+endif()
 target_include_directories(jev_trading_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_options(jev_trading_core PRIVATE -Wall -Wextra -Wpedantic)
 
@@ -142,6 +150,12 @@ endif()
 target_compile_definitions(jev_trading_core PRIVATE JEV_SOURCE_REVISION="${JEV_SOURCE_REVISION}")
 
 enable_testing()
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_FOUND)
+    add_test(NAME performance_summary_contract
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/performance_summary_test.py")
+    set_tests_properties(performance_summary_contract PROPERTIES LABELS integration)
+endif()
 
 # GoogleTest backs the layered test tree (unit, component, integration). The
 # release is pinned so builds stay reproducible without a system googletest
@@ -165,26 +179,6 @@ function(jev_add_gtest_test name)
     gtest_discover_tests(${name} PROPERTIES LABELS ${ARG_LABEL}
             DISCOVERY_TIMEOUT 120)
 endfunction()
-
-# Offline component and synchronous pipeline measurements; no network.
-add_executable(jev_bench src/tools/jev_bench.cpp)
-target_link_libraries(jev_bench PRIVATE jev_trading_core)
-target_compile_options(jev_bench PRIVATE -Wall -Wextra -Wpedantic)
-
-# The percentile analysis script is standard-library-only; verify it against
-# the committed fixture whenever an interpreter is available.
-find_package(Python3 COMPONENTS Interpreter QUIET)
-if(Python3_FOUND)
-    add_test(NAME benchmark_contract
-            COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/benchmark_test.py"
-                    $<TARGET_FILE:jev_bench>)
-    set_tests_properties(benchmark_contract PROPERTIES LABELS integration TIMEOUT 180)
-    add_test(NAME ttt_percentiles_fixture
-                    COMMAND ${Python3_EXECUTABLE}
-                            "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ttt_percentiles.py"
-                            "${CMAKE_CURRENT_SOURCE_DIR}/scripts/testdata/ttt-fixture.log"
-                            --check "${CMAKE_CURRENT_SOURCE_DIR}/scripts/testdata/ttt-fixture-expected.tsv")
-endif()
 
 if(JEV_ENABLE_SIMNOW)
     jev_add_gtest_test(simnow_adapter_tests LABEL integration
@@ -220,7 +214,7 @@ jev_add_gtest_test(component_tests LABEL component
         SOURCES tests/component/component_tests.cpp
                 tests/component/decision_matrix_test.cpp
                 tests/component/order_state_machine_test.cpp
-                tests/component/processing_observer_test.cpp)
+                tests/component/performance_measurement_test.cpp)
 jev_add_gtest_test(integration_tests LABEL integration
         SOURCES tests/integration/integration_tests.cpp
                 tests/integration/market_data_worker_test.cpp

@@ -7,6 +7,7 @@
 
 #include "common/lf_queue.h"
 #include "common/types.h"
+#include "common/performance_trace.h"
 
 namespace Exchange {
 
@@ -64,9 +65,7 @@ struct DepthSnapshot {
 struct MarketUpdate {
     MarketUpdateType type_ = MarketUpdateType::INVALID;
 
-    /// Monotonic publish timestamp in nanoseconds, stamped by the producer
-    /// at the market-data queue boundary. Zero means unstamped.
-    std::uint64_t published_ns_ = 0;
+    Common::PerformanceTrace trace_{};
 
     Common::OrderId order_id_ = Common::OrderId_INVALID;
     Common::TickerId ticker_id_ = Common::TickerId_INVALID;

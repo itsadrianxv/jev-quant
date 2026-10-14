@@ -43,7 +43,13 @@ class Native final : public Transport {
         void OnFrontDisconnected(int e) override { owner.emit(owner.market_sink_,Kind::Disconnected,nullptr,0,true,e); }
         void OnRspUserLogin(CThostFtdcRspUserLoginField* p,CThostFtdcRspInfoField* e,int id,bool last) override { owner.data(owner.market_sink_,Kind::MarketLogin,p,e,id,last); }
         void OnRspSubMarketData(CThostFtdcSpecificInstrumentField*,CThostFtdcRspInfoField* e,int id,bool last) override { owner.emit(owner.market_sink_,Kind::Subscription,e,id,last); }
-        void OnRtnDepthMarketData(CThostFtdcDepthMarketDataField* p) override { owner.data(owner.market_sink_,Kind::Depth,p); }
+        void OnRtnDepthMarketData(CThostFtdcDepthMarketDataField* p) override {
+            const auto now = owner.config_.measurement ? Common::nowSteadyNs() : 0;
+            Event event{Kind::Depth, 0, 0, true, {}};
+            if (owner.config_.measurement) event.trace = owner.config_.measurement->source(now);
+            if (p) event.payload = *p;
+            owner.market_sink_(std::move(event));
+        }
         void OnRspError(CThostFtdcRspInfoField* e,int id,bool last) override { owner.emit(owner.market_sink_,Kind::Error,e,id,last); }
     } market_spi_{*this};
     CThostFtdcTraderApi* trader_ = nullptr;
@@ -117,6 +123,16 @@ class Native final : public Transport {
         }
         default: throw std::logic_error("Unsupported CTP request");
         }
+    }
+    int insertObserved(const CThostFtdcInputOrderField& value, int id, Common::PerformanceTrace& trace) override {
+        auto p = value;
+        if (trace.t[4]) trace.t[7] = Common::nowSteadyNs();
+        return trader_->ReqOrderInsert(&p, id);
+    }
+    int cancelObserved(const CThostFtdcInputOrderActionField& value, int id, Common::PerformanceTrace& trace) override {
+        auto p = value;
+        if (trace.t[4]) trace.t[7] = Common::nowSteadyNs();
+        return trader_->ReqOrderAction(&p, id);
     }
     int insert(const CThostFtdcInputOrderField& value,int id) override { auto p=value; return trader_->ReqOrderInsert(&p,id); }
     int cancel(const CThostFtdcInputOrderActionField& value,int id) override { auto p=value; return trader_->ReqOrderAction(&p,id); }

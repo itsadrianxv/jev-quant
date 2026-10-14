@@ -80,7 +80,9 @@ auto JevWorker::processPending() -> bool {
             std::terminate();
         }
         *slot = decision;
-        slot->enqueued_ns_ = Common::nowSteadyNs();
+        // Correlation comes from the selected input, never from provider output.
+        slot->trace_ = decision.evaluation_id_ == newest->evaluation_id_ &&
+                       decision.ticker_id_ == newest->ticker_id_ ? newest->trace_ : Common::PerformanceTrace{};
         outgoing_decisions_->updateWriteIndex();
         if (log_handle_) {
             log_handle_->log(Common::LogLevel::INFO,

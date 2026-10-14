@@ -68,6 +68,21 @@ int main(int argc, char** argv) {
         const bool simex = venue_type == "simex";
         const bool simnow = venue_type == "simnow";
         const auto run_seconds = runtime.value("run_seconds", 0);
+        const auto perf = document.value("performance", nlohmann::json::object());
+        std::unique_ptr<Trading::Measurement> measurement;
+        const auto perf_directory = perf.value("output_directory", std::string("performance-run"));
+        if (perf.value("enabled", false)) {
+            if (!simnow) throw std::runtime_error("Performance capture requires SimNow");
+            const auto seconds = perf.value("window_seconds", 300LL);
+            const auto grace = perf.value("grace_seconds", 120LL);
+            const auto capacity = perf.value("capacity", 10000LL);
+            if (seconds <= 0 || seconds > 86400 || grace <= 0 || grace > 86400 || capacity <= 0 || capacity > 1000000)
+                throw std::runtime_error("Invalid performance capture bounds");
+            const auto mode = perf.value("mode", std::string("native"));
+            if (mode != "native" && mode != "callgrind") throw std::runtime_error("Unknown performance mode");
+            measurement = std::make_unique<Trading::Measurement>(capacity, seconds*1000000000ULL,
+                grace*1000000000ULL, mode == "callgrind");
+        }
 
         if (ticker_id >= Common::ME_MAX_TICKERS || queue_capacity == 0 ||
             client_id == Common::ClientId_INVALID || run_seconds < 0 ||
@@ -97,9 +112,8 @@ int main(int argc, char** argv) {
         Trading::TradeEngine engine(
                 client_id, limits, &client_requests, &client_responses,
                 &market_updates, &decisions,
-                logger.registerProducer("TradeEngine", "trade-engine-" + std::to_string(client_id) + ".log"),
-                logger.registerProducer("TTT", "ttt-" + std::to_string(client_id) + ".log"));
-                // log producer for logging Tick-To-Trade latency data
+                logger.registerProducer("TradeEngine", "trade-engine-" + std::to_string(client_id) + ".log"));
+        engine.setMeasurement(measurement.get());
 
         engine.setDecisionOrderQuantity(order_qty);
         engine.setVerboseMarketData(verbose_market_data);
@@ -148,8 +162,10 @@ int main(int argc, char** argv) {
                     logger.registerProducer("Venue", "venue-" + std::to_string(ticker_id) + ".log"));
         } else if (simnow) {
 #ifdef JEV_ENABLE_SIMNOW
+            auto simnow_config = Trading::SimNowConfig::fromJson(venue_json, ticker_id);
+            simnow_config.measurement = measurement.get();
             venue = std::make_unique<Trading::SimNowVenueAdapter>(&market_data, &order_gateway,
-                Trading::SimNowConfig::fromJson(venue_json, ticker_id),
+                std::move(simnow_config),
                 [&](bool ready, Trading::AccountState account, double multiplier) {
                     engine.updateVenueState(ready, account, multiplier);
                 });
@@ -176,6 +192,7 @@ int main(int argc, char** argv) {
         // Keep the engine consuming responses while SimNow cancels outstanding orders.
         // TODO(lifecycle): Add cooperative cancellation to provider calls during shutdown.
         const auto shutdown = [&] {
+            if (measurement) measurement->finish();
             if (simnow) engine.disableVenueTrading();
             market_data.stop();
             venue->quiesce();
@@ -198,6 +215,7 @@ int main(int argc, char** argv) {
             std::clog << "Starting order gateway\n";
             order_gateway.start();
             venue->waitUntilReady();
+            if (measurement) measurement->arm();
             std::clog << venue_type << " venue adapter connected\n";
             std::clog << "jev_trading running\n";
 
@@ -213,6 +231,13 @@ int main(int argc, char** argv) {
             throw;
         }
         shutdown();
+        if (measurement) {
+            bool healthy = true;
+#ifdef JEV_ENABLE_SIMNOW
+            healthy = !static_cast<Trading::SimNowVenueAdapter*>(venue.get())->failed();
+#endif
+            measurement->write(perf_directory, healthy, jev_worker.failureCount());
+        }
 #ifdef JEV_ENABLE_SIMNOW
         if (simnow && static_cast<Trading::SimNowVenueAdapter*>(venue.get())->failed()) return 1;
 #endif

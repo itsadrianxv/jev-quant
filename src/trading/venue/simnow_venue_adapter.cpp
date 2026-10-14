@@ -216,7 +216,7 @@ struct SimNowVenueAdapter::Impl {
             publish(o,o.rejected ? Exchange::ClientResponseType::REJECTED : Exchange::ClientResponseType::CANCELED);
         o.done=true;
     }
-    void cancel(Order& o) {
+    void cancel(Order& o, const Exchange::ClientRequest* observed = nullptr) {
         if(o.done || o.has_terminal || o.cancel_sent || disconnected) return;
         CThostFtdcInputOrderActionField p{};
         put(p.BrokerID,config.broker); put(p.InvestorID,config.user); put(p.UserID,config.user);
@@ -224,14 +224,16 @@ struct SimNowVenueAdapter::Impl {
         put(p.OrderRef,o.ref); put(p.OrderSysID,o.sys);
         p.FrontID=front; p.SessionID=session; p.ActionFlag=THOST_FTDC_AF_Delete;
         p.OrderActionRef=++next_id; o.cancel_id=next_id; o.cancel_sent=true;
-        const auto rc=transport->cancel(p,next_id);
+        auto request = observed ? *observed : Exchange::ClientRequest{};
+        const auto rc=transport->cancelObserved(p,next_id,request.trace_);
+        if (config.measurement && observed) config.measurement->record(request,rc);
         if(rc!=0) { publish(o,Exchange::ClientResponseType::CANCEL_REJECTED); fail("Cancellation not submitted; order remains unresolved"); }
     }
     void submit(const Exchange::ClientRequest& r) {
         if(r.client_id_!=gateway->clientId() || r.ticker_id_!=config.ticker_id)
             throw std::runtime_error("SimNow request identity mismatch");
         if(r.type_==Exchange::ClientRequestType::CANCEL) {
-            for(auto& [ref,o]:orders) if(o.request.order_id_==r.order_id_) { cancel(o); return; }
+            for(auto& [ref,o]:orders) if(o.request.order_id_==r.order_id_) { cancel(o, &r); return; }
         }
         Order rejected; rejected.request=r;
         auto reject=[&]{publish(rejected,r.type_==Exchange::ClientRequestType::CANCEL ?
@@ -258,10 +260,12 @@ struct SimNowVenueAdapter::Impl {
         p.ContingentCondition=THOST_FTDC_CC_Immediately; p.ForceCloseReason=THOST_FTDC_FCC_NotForceClose;
         Order o; o.request=r; o.ref=ref; o.insert_id=++next_id;
         auto& stored=orders.emplace(ref,std::move(o)).first->second;
-        const auto rc=transport->insert(p,next_id);
+        auto observed = r;
+        const auto rc=transport->insertObserved(p,next_id,observed.trace_);
+        if (config.measurement) config.measurement->record(observed,rc);
         if(rc!=0) { publish(stored,Exchange::ClientResponseType::REJECTED); stored.done=true; }
     }
-    void depth(const CThostFtdcDepthMarketDataField& p) {
+    void depth(const CThostFtdcDepthMarketDataField& p, const Common::PerformanceTrace& trace) {
         if(config.instrument!=p.InstrumentID) return;
         {
             std::scoped_lock lock(market_state_mutex);
@@ -272,6 +276,7 @@ struct SimNowVenueAdapter::Impl {
             }
         }
         Exchange::MarketUpdate u; u.type_=Exchange::MarketUpdateType::DEPTH_SNAPSHOT; u.ticker_id_=config.ticker_id;
+        u.trace_ = trace;
         auto& d=u.depth_snapshot_;
         d.last_price_=Ctp::price(p.LastPrice); d.upper_limit_price_=Ctp::price(p.UpperLimitPrice);
         d.lower_limit_price_=Ctp::price(p.LowerLimitPrice);
@@ -424,7 +429,7 @@ struct SimNowVenueAdapter::Impl {
         }
         if(fatal || stopping) return;
         if(e.kind==Kind::Depth) {
-            if(auto p=std::get_if<CThostFtdcDepthMarketDataField>(&e.payload)) depth(*p);
+            if(auto p=std::get_if<CThostFtdcDepthMarketDataField>(&e.payload)) depth(*p, e.trace);
             return;
         }
         if(e.error) throw std::runtime_error("CTP response error code="+std::to_string(e.error));
@@ -448,7 +453,10 @@ struct SimNowVenueAdapter::Impl {
             for(std::size_t batch=0; batch<256 && !stopping && !fatal; ++batch) {
                 const auto* pending=market_events.getNextToRead();
                 if(!pending) break;
-                try { marketEvent(*pending); } catch(const std::exception& ex) { signalFailure(ex.what()); }
+                const auto received_ns = pending->trace.source_id ? Common::nowSteadyNs() : 0;
+                auto observed = *pending;
+                if (observed.trace.source_id) observed.trace.t[1] = received_ns;
+                try { marketEvent(observed); } catch(const std::exception& ex) { signalFailure(ex.what()); }
                 market_events.updateReadIndex();
             }
         } catch(const std::exception& ex) { signalFailure(ex.what()); }

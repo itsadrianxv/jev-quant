@@ -48,6 +48,7 @@ void text(char (&dest)[N], const char* src) {
 }
 
 struct Fake final : Ctp::Transport {
+    Measurement* measurement = nullptr;
     Sink trader, market;
     std::mutex mutex;
     std::vector<CThostFtdcInputOrderField> sent;
@@ -64,7 +65,8 @@ struct Fake final : Ctp::Transport {
         return k == Kind::MarketConnected || k == Kind::MarketLogin ||
                k == Kind::Subscription || k == Kind::Depth;
     }
-    void start(const SimNowConfig&, Sink t, Sink m) override {
+    void start(const SimNowConfig& config, Sink t, Sink m) override {
+        measurement = config.measurement;
         trader = std::move(t);
         market = std::move(m);
         if (flood) {
@@ -80,7 +82,9 @@ struct Fake final : Ctp::Transport {
     }
     void stop() noexcept override {}
     void emit(Kind k, Ctp::Payload p = {}, int id = 0, int error = 0, bool last = true) {
-        (marketSide(k) ? market : trader)({k, id, error, last, std::move(p)});
+        Ctp::Event event{k, id, error, last, std::move(p)};
+        if (k == Kind::Depth && measurement) event.trace = measurement->source(Common::nowSteadyNs());
+        (marketSide(k) ? market : trader)(std::move(event));
     }
     CThostFtdcDepthMarketDataField depth() {
         CThostFtdcDepthMarketDataField p{};
@@ -346,6 +350,7 @@ class SimNowAdapter : public ::testing::Test {
         fake_ = transport.get();
         if (setup_) setup_(*fake_);
         SimNowConfig config;
+        config.measurement = measurement_;
         config.instrument = "au2612";
         config.user = "test";
         config.password = "test";
@@ -396,6 +401,8 @@ class SimNowAdapter : public ::testing::Test {
         request.order_type_ = Common::OrderType::LIMIT;
         request.qty_ = 1;
         request.price_ = Ctp::price(price);
+        request.trace_ = request_trace_;
+        if (request.trace_.source_id) request.trace_.t[4] = Common::nowSteadyNs();
         *requests_.tryGetNextToWriteTo() = request;
         requests_.updateWriteIndex();
     }
@@ -430,6 +437,8 @@ class SimNowAdapter : public ::testing::Test {
     }
 
     Exchange::ClientRequestLFQueue requests_{64};
+    Measurement* measurement_ = nullptr;
+    Common::PerformanceTrace request_trace_{};
     Exchange::ClientResponseLFQueue responses_{64};
     Exchange::MarketUpdateLFQueue updates_{128};
     MarketDataConsumer market_{1, &updates_};
@@ -439,6 +448,58 @@ class SimNowAdapter : public ::testing::Test {
     std::unique_ptr<SimNowVenueAdapter> adapter_;
     std::atomic<bool> ready_{false};
 };
+
+TEST_F(SimNowAdapter, PreservesCallbackSourceAcrossMarketWorkerPublication) {
+    Measurement measurement(8, 60000000000ULL, 60000000000ULL, false);
+    measurement_ = &measurement;
+    measurement.arm();
+    startAdapter();
+    ASSERT_GT(updates_.size(), 0U);
+    const auto trace = updates_.getNextToRead()->trace_;
+    updates_.updateReadIndex();
+    stopAdapter();
+    EXPECT_GT(trace.source_id, 0U);
+    EXPECT_GT(trace.t[0], 0U);
+    EXPECT_GE(trace.t[1], trace.t[0]);
+    EXPECT_GE(trace.t[2], trace.t[1]);
+    EXPECT_EQ(trace.t[3], 0U);
+    adapter_.reset();
+}
+
+TEST_F(SimNowAdapter, CapturesSuccessfulSubmissionAfterGatewayAndAdapterBoundaries) {
+    Measurement measurement(8, 60000000000ULL, 60000000000ULL, false);
+    measurement_ = &measurement;
+    measurement.arm();
+    startAdapter();
+    request_trace_ = measurement.source(Common::nowSteadyNs());
+    request_trace_.evaluation_id = 7;
+    for (int i = 1; i < 4; ++i) request_trace_.t[i] = Common::nowSteadyNs();
+    send();
+    awaitFirstInsert();
+    stopAdapter(); // The collector has a single writer; inspect only after join.
+    ASSERT_EQ(measurement.size(), 1U);
+    const auto& sample = measurement.sample(0);
+    EXPECT_EQ(sample.trace.evaluation_id, 7U);
+    for (int i = 1; i < 8; ++i) EXPECT_GE(sample.trace.t[i], sample.trace.t[i-1]);
+    EXPECT_GT(sample.trace.t[7], 0U);
+    adapter_.reset();
+}
+
+TEST_F(SimNowAdapter, ImmediateCtpFailureDoesNotBecomeAPerformanceSample) {
+    Measurement measurement(8, 60000000000ULL, 60000000000ULL, false);
+    measurement_ = &measurement;
+    measurement.arm();
+    arrange([](Fake& fake) { fake.reject_insert = true; });
+    startAdapter();
+    request_trace_ = measurement.source(Common::nowSteadyNs());
+    request_trace_.evaluation_id = 7;
+    for (int i = 1; i < 4; ++i) request_trace_.t[i] = Common::nowSteadyNs();
+    send();
+    EXPECT_EQ(response().type_, Exchange::ClientResponseType::REJECTED);
+    stopAdapter();
+    EXPECT_EQ(measurement.size(), 0U);
+    adapter_.reset();
+}
 
 TEST_F(SimNowAdapter, PrepareLeavesBothBusinessWorkersStopped) {
     prepareAdapter();

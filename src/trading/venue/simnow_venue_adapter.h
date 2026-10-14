@@ -6,10 +6,12 @@
 #include "ThostFtdcUserApiStruct.h"
 #include "trading/venue/venue_adapter.h"
 #include "trading/strategy/jev_decision.h"
+#include "trading/performance/measurement.h"
 
 namespace Trading {
 
 struct SimNowConfig {
+    Measurement* measurement = nullptr;
     std::string trading_front, market_front, instrument;
     std::string broker = "9999", app_id = "simnow_client_test", auth_code;
     std::string user, password, flow_directory = "flows/simnow";
@@ -35,6 +37,7 @@ struct Event {
     int request_id = 0, error = 0;
     bool last = true;
     Payload payload;
+    Common::PerformanceTrace trace{};
 };
 
 // Internal SDK seam: fake transports drive the same event queues in offline tests.
@@ -51,6 +54,16 @@ class Transport {
     virtual int request(Kind, int) = 0;
     virtual int insert(const CThostFtdcInputOrderField&, int) = 0;
     virtual int cancel(const CThostFtdcInputOrderActionField&, int) = 0;
+    // Test transports use this default boundary. Native overrides stamp directly
+    // before the SDK call, after copying the SDK argument.
+    virtual int insertObserved(const CThostFtdcInputOrderField& p, int id, Common::PerformanceTrace& trace) {
+        if (trace.t[4]) trace.t[7] = Common::nowSteadyNs();
+        return insert(p, id);
+    }
+    virtual int cancelObserved(const CThostFtdcInputOrderActionField& p, int id, Common::PerformanceTrace& trace) {
+        if (trace.t[4]) trace.t[7] = Common::nowSteadyNs();
+        return cancel(p, id);
+    }
 };
 std::unique_ptr<Transport> makeTransport();
 Common::Price price(double);

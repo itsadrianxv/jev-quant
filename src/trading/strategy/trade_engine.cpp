@@ -15,9 +15,8 @@ TradeEngine::TradeEngine(
         Exchange::ClientResponseLFQueue* incoming_responses,
         Exchange::MarketUpdateLFQueue* incoming_market_updates,
         JevDecisionLFQueue* incoming_jev_decisions,
-        std::optional<Common::AsyncLogger::ProducerHandle> log_handle,
-        std::optional<Common::AsyncLogger::ProducerHandle> ttt_handle)
-        : ttt_handle_(std::move(ttt_handle)), client_id_(client_id),
+        std::optional<Common::AsyncLogger::ProducerHandle> log_handle)
+        : client_id_(client_id),
             position_keeper_(),
             risk_manager_(&position_keeper_, risk_limits),
             order_manager_(client_id_, this, &risk_manager_),
@@ -86,22 +85,10 @@ auto TradeEngine::run() -> void {
     }
 }
 
-auto TradeEngine::recordLatency(std::string_view event, std::uint64_t evaluation_id,
-                                Common::TickerId ticker_id, std::uint64_t elapsed_ns)
-        -> void {
-    if (!ttt_handle_) return;
-    ttt_handle_->logFixed(Common::LogLevel::INFO, [&](auto& out) {
-        out.append("event=").append(event)
-                .append(" evaluation_id=").append(evaluation_id)
-                .append(" ticker_id=").append(ticker_id)
-                .append(" elapsed_ns=").append(elapsed_ns);
-    });
-}
-
 auto TradeEngine::recordDecisionDrop(std::string_view event,
                                      const JevDecision& decision) -> void {
-    if (!ttt_handle_) return;
-    ttt_handle_->logFixed(Common::LogLevel::WARN, [&](auto& out) {
+    if (!log_handle_) return;
+    log_handle_->logFixed(Common::LogLevel::WARN, [&](auto& out) {
         out.append("event=").append(event)
                 .append(" evaluation_id=").append(decision.evaluation_id_)
                 .append(" ticker_id=").append(decision.ticker_id_);
@@ -120,10 +107,6 @@ auto TradeEngine::processPending() -> bool {
 auto TradeEngine::processClientResponses() -> bool {
     bool processed = false;
     while (const auto* response = incoming_responses_->getNextToRead()) {
-        if (response->published_ns_ != 0) {
-            recordLatency("ttt_order_round_trip", 0, response->ticker_id_,
-                          Common::nowSteadyNs() - response->published_ns_);
-        }
         if (log_handle_) {
             log_handle_->logFixed(Common::LogLevel::INFO,
                                   [&](auto& out) {
@@ -133,13 +116,7 @@ auto TradeEngine::processClientResponses() -> bool {
                                               .append(response->ticker_id_);
                                   });
         }
-        const auto stage_start = processing_observer_ ? Common::nowSteadyNs() : 0;
         handleClientResponse(*response);
-        if (processing_observer_) {
-            processing_observer_->record({ProcessingStage::RESPONSE,
-                    static_cast<std::uint32_t>(response->type_),
-                    Common::nowSteadyNs() - stage_start});
-        }
         incoming_responses_->updateReadIndex();
         processed = true;
     }
@@ -149,15 +126,12 @@ auto TradeEngine::processClientResponses() -> bool {
 auto TradeEngine::processMarketUpdates() -> bool {
     bool processed = false;
     while (const auto* update = incoming_market_updates_->getNextToRead()) {
+        const auto received_ns = measurement_ ? Common::nowSteadyNs() : 0;
         if (update->ticker_id_ >= ticker_order_books_.size()) {
             std::terminate();
         }
 
         auto& book = *ticker_order_books_.at(update->ticker_id_);
-        if (update->published_ns_ != 0) {
-            recordLatency("ttt_market_data_consumed", 0, update->ticker_id_,
-                          Common::nowSteadyNs() - update->published_ns_);
-        }
         if (log_handle_ && (verbose_market_data_ ||
                             update->type_ == Exchange::MarketUpdateType::DEPTH_SNAPSHOT)) {
             log_handle_->logFixed(Common::LogLevel::DEBUG,
@@ -168,13 +142,13 @@ auto TradeEngine::processMarketUpdates() -> bool {
                                               .append(update->ticker_id_);
                                   });
         }
-        const auto stage_start = processing_observer_ ? Common::nowSteadyNs() : 0;
-        book.onMarketUpdate(*update);
-        handleMarketUpdate(*update, book);
-        if (processing_observer_) {
-            processing_observer_->record({ProcessingStage::MARKET,
-                    static_cast<std::uint32_t>(update->type_),
-                    Common::nowSteadyNs() - stage_start});
+        latest_traces_[update->ticker_id_] = update->trace_;
+        if (latest_traces_[update->ticker_id_].source_id)
+            latest_traces_[update->ticker_id_].t[3] = received_ns;
+        {
+            InstructionScope scope(measurement_);
+            book.onMarketUpdate(*update);
+            handleMarketUpdate(*update, book);
         }
         incoming_market_updates_->updateReadIndex();
         processed = true;
@@ -185,11 +159,6 @@ auto TradeEngine::processMarketUpdates() -> bool {
 auto TradeEngine::processJevDecisions() -> bool {
     bool processed = false;
     while (const auto* decision = incoming_jev_decisions_->getNextToRead()) {
-        if (decision->enqueued_ns_ != 0) {
-            recordLatency("ttt_decision_consumed", decision->evaluation_id_,
-                          decision->ticker_id_,
-                          Common::nowSteadyNs() - decision->enqueued_ns_);
-        }
         if (log_handle_) {
             log_handle_->logFixed(Common::LogLevel::INFO,
                                   [&](auto& out) {
@@ -199,18 +168,12 @@ auto TradeEngine::processJevDecisions() -> bool {
                                               .append(decision->evaluation_id_);
                                   });
         }
-        if (processing_observer_) {
-            observed_request_count_ = 0;
-            observed_request_type_ = 0;
+        decision_trace_ = decision->trace_;
+        {
+            InstructionScope scope(measurement_, true);
+            handleJevDecision(*decision);
         }
-        const auto stage_start = processing_observer_ ? Common::nowSteadyNs() : 0;
-        handleJevDecision(*decision);
-        if (processing_observer_) {
-            processing_observer_->record({ProcessingStage::DECISION,
-                    static_cast<std::uint32_t>(decision->intent_),
-                    Common::nowSteadyNs() - stage_start,
-                    observed_request_count_, observed_request_type_});
-        }
+        decision_trace_ = {};
         incoming_jev_decisions_->updateReadIndex();
         processed = true;
     }
@@ -250,7 +213,7 @@ auto TradeEngine::handleMarketUpdate(const Exchange::MarketUpdate& update,
 
 auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
     if (single_order_venue_ && !venue_ready_.load()) {
-        recordDecisionDrop("ttt_decision_blocked_not_ready", decision);
+        recordDecisionDrop("decision_blocked_not_ready", decision);
         return;
     }
     if (decision.ticker_id_ >= latest_evaluation_ids_.size() ||
@@ -266,12 +229,12 @@ auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
                                               .append(decision.evaluation_id_);
                                   });
         }
-        recordDecisionDrop("ttt_decision_stale_drop", decision);
+        recordDecisionDrop("decision_stale_drop", decision);
         return;
     }
 
     if (!feature_engines_.at(decision.ticker_id_).features().valid_) {
-        recordDecisionDrop("ttt_decision_blocked_no_features", decision);
+        recordDecisionDrop("decision_blocked_no_features", decision);
         return;
     }
 
@@ -279,18 +242,17 @@ auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
         for (const auto side : {Common::Side::BUY, Common::Side::SELL}) {
             const auto state = order_manager_.getOrder(decision.ticker_id_, side).order_state_;
             if (state != OMOrderState::INVALID && state != OMOrderState::DEAD) {
-                recordDecisionDrop("ttt_decision_blocked_order_working", decision);
+                recordDecisionDrop("decision_blocked_order_working", decision);
                 return;
             }
         }
         if (decision.intent_ == JevIntent::OPEN &&
             position_keeper_.getPositionInfo(decision.ticker_id_).position_ != 0) {
-            recordDecisionDrop("ttt_decision_blocked_position_open", decision);
+            recordDecisionDrop("decision_blocked_position_open", decision);
             return;
         }
     }
 
-    const auto decision_to_order_start_ns = Common::nowSteadyNs();
     const auto& book = *ticker_order_books_.at(decision.ticker_id_);
     const auto* bbo = book.getBBO();
     if (decision.intent_ == JevIntent::OPEN) {
@@ -306,7 +268,7 @@ auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
             if ((position > 0 && side == Common::Side::SELL) ||
                 (position < 0 && side == Common::Side::BUY) || outstanding) {
                 if (log_handle_) log_handle_->log(Common::LogLevel::WARN, "event=opposite_open_blocked");
-                recordDecisionDrop("ttt_decision_blocked_opposite_open", decision);
+                recordDecisionDrop("decision_blocked_opposite_open", decision);
                 onJevDecision(decision);
                 return;
             }
@@ -334,9 +296,6 @@ auto TradeEngine::handleJevDecision(const JevDecision& decision) -> void {
             }
         }
     }
-    recordLatency("ttt_decision_to_order", decision.evaluation_id_,
-                  decision.ticker_id_,
-                  Common::nowSteadyNs() - decision_to_order_start_ns);
     onJevDecision(decision);
 }
 
@@ -412,6 +371,10 @@ auto TradeEngine::buildJevEvaluationState(
         pnl_factor = venue_multiplier_ / state.price_scale_;
     }
     state.evaluation_id_ = evaluation_id;
+    if (measurement_ && measurement_->admitting(Common::nowSteadyNs())) {
+        state.trace_ = latest_traces_[ticker_id];
+        state.trace_.evaluation_id = evaluation_id;
+    }
     state.ticker_id_ = ticker_id;
     state.depth_snapshot_ = *ticker_order_books_.at(ticker_id)->getDepthSnapshot();
     state.market_features_ = feature_engines_.at(ticker_id).features();
@@ -451,11 +414,15 @@ auto TradeEngine::sendClientRequest(const Exchange::ClientRequest& request)
         std::terminate();
     }
     *slot = request;
-    outgoing_requests_->updateWriteIndex();
-    if (processing_observer_) {
-        ++observed_request_count_;
-        observed_request_type_ = static_cast<std::uint32_t>(request.type_);
+    slot->trace_ = {};
+    if (measurement_) {
+        const auto now = Common::nowSteadyNs();
+        if (request.type_ == Exchange::ClientRequestType::NEW && decision_trace_.source_id && measurement_->collecting(now))
+            slot->trace_ = decision_trace_;
+        if (slot->trace_.source_id || (request.type_ == Exchange::ClientRequestType::CANCEL && measurement_->admitting(now)))
+            slot->trace_.t[4] = Common::nowSteadyNs();
     }
+    outgoing_requests_->updateWriteIndex();
     if (log_handle_) {
         log_handle_->logFixed(Common::LogLevel::INFO,
                               [&](auto& out) {

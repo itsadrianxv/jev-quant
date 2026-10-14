@@ -43,6 +43,7 @@ struct RiskState {
 };
 
 struct JevEvaluationState {
+    Common::PerformanceTrace trace_{};
     double price_scale_ = 1.0;
     bool pnl_before_fees_ = false;
     std::uint64_t evaluation_id_ = 0;
@@ -71,9 +72,7 @@ enum class JevIntent : std::uint8_t {
 struct JevDecision {
     std::uint64_t evaluation_id_ = 0;
 
-    /// Monotonic enqueue timestamp in nanoseconds, stamped by the JevWorker
-    /// when the decision enters the outgoing queue. Zero means unstamped.
-    std::uint64_t enqueued_ns_ = 0;
+    Common::PerformanceTrace trace_{};
 
     Common::TickerId ticker_id_ = Common::TickerId_INVALID;
     JevBias bias_ = JevBias::INVALID;
