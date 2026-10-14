@@ -1,6 +1,8 @@
-# Evidence-driven optimization: before/after
+# Historical optimization: before/after
 
-The committed PR 2 callgrind baseline identified `MarketOrderBook::clearIncrementalBook()` and the STL array fill beneath it as 98.98% of instructions (15,238,140,000); the depth-snapshot bench never has incremental entries after entering depth mode, so repeatedly clearing the 64K order and 4K-per-side slot arrays was unnecessary. The optimization skips that clear for `UNINITIALIZED` and `DEPTH_SNAPSHOT` books while retaining the existing clear when transitioning from incremental mode.
+These results use the previous whole-process profiling and lossy-log timing protocol. They are not comparable with the current offline benchmark windows. See [the current methodology](../performance-benchmark.md).
+
+The committed PR 2 callgrind baseline identified `MarketOrderBook::clearIncrementalBook()` and the STL array fill beneath it as 98.98% of instructions (15,238,140,000); the depth-snapshot bench never has incremental entries after entering depth mode, so repeatedly clearing the 64K order and 4K-per-side slot arrays was unnecessary. The optimization skips that clear for `UNINITIALIZED` and `DEPTH_SNAPSHOT` books while rejecting mixed incremental/snapshot use. The current implementation does not transition an incremental book into snapshot mode.
 
 ## Callgrind
 
