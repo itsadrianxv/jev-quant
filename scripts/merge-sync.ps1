@@ -34,7 +34,10 @@ New-Item -ItemType Directory -Force -Path $WslBuildDir | Out-Null
 robocopy $CloneRoot $WslBuildDir /MIR /XD .git .worktrees build tmp /XF .git /NFL /NDL /NJH /NJS /NP
 if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE." }
 
-wsl.exe -d Ubuntu --cd /home/wangyuk/build/jev-quant/master --exec bash -lc 'cmake --preset ci-gcc-debug && cmake --build --preset ci-gcc-debug && ctest --preset test-ci-gcc-debug && cmake --preset ci-gcc-release && cmake --build --preset ci-gcc-release && ctest --preset test-ci-gcc-release'
+wsl.exe -d Ubuntu --exec bash -lc 'rm -rf -- /home/wangyuk/build/jev-quant/master/build'
+Assert-LastExit 'WSL build directory wipe'
+
+wsl.exe -d Ubuntu --cd /home/wangyuk/build/jev-quant/master --exec bash -lc 'cmake --preset ci-gcc-debug && cmake --build --preset ci-gcc-debug --parallel 3 && ctest --preset test-ci-gcc-debug && cmake --preset ci-gcc-release && cmake --build --preset ci-gcc-release --parallel 2 && ctest --preset test-ci-gcc-release'
 Assert-LastExit 'WSL build/test'
 
 wsl.exe -d Ubuntu --cd $WslMainRepo --exec bash -c 'git fetch /mnt/d/wsl_codebase/jev-quant master && git merge --ff-only FETCH_HEAD'
