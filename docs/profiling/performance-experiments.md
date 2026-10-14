@@ -1,127 +1,102 @@
-# Running offline performance experiments
+# SimNow performance experiments
 
-Read [metric definitions](performance-benchmark.md) before interpreting results.
-The first use is a small validity trial. A formal baseline and evidence-driven
-optimization are later work; the trial is not a performance claim.
+## Timestamp reference
 
-## Delivery validation
+| 时间戳 | 定义 |
+| --- | --- |
+| t1 | 进入 CTP 行情回调，不是网卡收包。 |
+| t2 | MarketDataConsumer 所在线程取得适配器队列中的行情事件。 |
+| t3 | 标准化行情即将发布到交易引擎队列。 |
+| t4 | 交易引擎取得该条标准化行情。 |
+| t5 | 实际订单请求即将发布到 OrderGateway 队列。 |
+| t6 | OrderGateway 取得订单请求。 |
+| t7 | OrderGateway 即将调用适配器提交接口。 |
+| t8 | 适配器即将调用 CTP 下单接口，不是网卡发包；撤单则使用撤单接口前的时间。 |
 
-On 2026-10-14, WSL Ubuntu with GCC 13.3 passed fresh Debug and Release builds,
-290/290 CTest cases in each configuration, and a Release-profile build. The
-commands below completed 23 native runs across all scenarios/modes and three
-Callgrind runs, with 32 measured inputs, eight warmup inputs, seed 42 and one
-repetition. Each profile contained the named measured-batch dump. This verifies
-the workflow, not statistical stability or a performance baseline.
+See performance-benchmark.md for source association, interval meaning, successful-submission selection and Callgrind limitations.
 
-## Build and transfer
+## Prepare before the trading session
 
-Follow the repository's Windows worktree workflow. Capture the source revision
-before copying into the .git-free WSL build directory; supply that value as
-`--revision`. For uncommitted experiments, append `-dirty` and retain the diff.
-Use local staging followed by Copy-Item to the WSL UNC path, verify file hashes,
-and run the following commands in the WSL copy. Do not robocopy directly to UNC.
+Use Linux x64/WSL, the bundled CTP SDK, libcurl/OpenSSL and the normal build dependencies. Install Valgrind including its headers before configuring. A build without those headers supports native capture and rejects Callgrind mode. Use an exclusive empty SimNow account and an eligible current SHFE contract; keep the existing one-contract risk constraints. Use the existing real Jev provider configuration and credentials. No scripted provider or forced trade trigger is added.
 
-```bash
+Build with symbols for attribution:
+
+```sh
 cmake --preset local-gcc-release-profile
 cmake --build --preset local-gcc-release-profile --parallel 3
 ```
 
-The preset retains Release optimization and adds debug symbols and frame pointers.
-The runner requires Linux, Python 3.11+, `taskset` and `lscpu`. Callgrind requires
-Valgrind and its headers installed before compilation. Ordinary native builds
-work without the headers; requesting an unavailable profile fails explicitly.
+Use a local SimNow JSON config. Keep credentials in the existing environment/.env mechanism. Set runtime.run_seconds to zero for manual termination, or at least window + grace. For the example below, use 430 seconds or longer. Set evaluation_interval_ms deliberately: evaluations can become stale while the provider is busy. Record this setting rather than changing freshness rules to obtain more orders.
 
-## Validate the workflow
+The runner injects this configuration into a temporary private file, preserving the real provider and venue settings:
 
-Set `REV` to the captured source identity and choose a new output directory:
-
-```bash
-REV=<captured-source-revision>
-python3 scripts/profiling/run_benchmarks.py \
-  --bench build/Release-profile/jev_bench --revision "$REV" \
-  --updates 32 --warmup 8 --repetitions 1 --out tmp/bench-trial
-
-python3 scripts/profiling/run_benchmarks.py \
-  --bench build/Release-profile/jev_bench --revision "$REV" \
-  --scenarios snapshot-5 incremental-32 pipeline-fill --modes callgrind \
-  --updates 32 --warmup 8 --repetitions 1 --out tmp/callgrind-trial
+```json
+{
+  "performance": {
+    "enabled": true,
+    "mode": "native",
+    "window_seconds": 300,
+    "grace_seconds": 120,
+    "capacity": 10000,
+    "output_directory": "performance-run"
+  }
+}
 ```
 
-The native matrix covers all ten scenarios, throughput and latency, and the
-three pipeline stage runs. Each run validates its expected work and output.
-CTest's `benchmark_contract` independently recomputes percentiles from raw samples,
-checks mode equivalence and deliberate failure cases. Component tests verify
-observer placement, early exits and individual response observations.
+The window starts after venue readiness. Choose grace to cover the configured provider timeout/retry envelope plus queue/handling time. A finite grace can omit slow chains. Increase it in a later, separately recorded run if necessary. Capture completion does not stop trading; stop the application normally after the grace period to export data. Early shutdown is an incomplete capture.
 
-## Conduct a study
+Before live use, run the local tests and the Callgrind collection check:
 
-1. Choose a question, such as how incremental book population affects update
-   cost, or whether fills cost more than acceptance processing. Keep scenario
-   differences explicit. Comparing HOLD and fill cycles does not isolate a
-   single function because they execute different business work.
-2. Choose fixed seed, warmup, measured count and CPU. `--cpu N` must name an
-   allowed CPU; by default the runner chooses the last allowed one and records it.
-   Start with 100,000 measured inputs, 1,000 warmup inputs and five repetitions.
-   Increase count if a batch is too short or percentile variability is large.
-   Each count is limited to 1,000,000 to bound memory. Use multiples of eight
-   for a full matrix so all scenario periods align.
-3. Run native throughput and latency separately from stage timing and profiling.
-   Keep other host activity low and record changes in power/thermal conditions.
-4. Use Callgrind on a smaller fixed load to attribute instruction cost. Keep
-   that load identical across versions. Compare inclusive call paths and self
-   costs; inclusive percentages overlap and must not be summed.
-5. Inspect raw samples, work counts and result checksums before interpreting
-   differences. Compare repetitions and observation controls. Form a hypothesis
-   for a later change only after the measurements support it.
-
-```bash
-python3 scripts/profiling/run_benchmarks.py \
-  --bench build/Release-profile/jev_bench --revision "$REV" \
-  --scenarios incremental-32 incremental-512 incremental-8192 \
-  --modes throughput latency --updates 100000 --warmup 1000 \
-  --repetitions 5 --out tmp/book-study
-
-python3 scripts/profiling/run_benchmarks.py \
-  --bench build/Release-profile/jev_bench --revision "$REV" \
-  --scenarios pipeline-hold pipeline-cancel pipeline-fill --modes stages \
-  --updates 100000 --warmup 1000 --repetitions 5 --out tmp/stage-study
+```sh
+ctest --preset test-ci-gcc-release
+python3 scripts/profiling/check_callgrind_scope.py --binary build/Release-profile/callgrind_scope_test
 ```
 
-`scripts/profiling/generate_baselines.sh` is a convenience wrapper around the
-runner, not a command that overwrites the historical committed baseline.
+These tests verify instrumentation contracts with controlled test inputs. They are not an alternative offline benchmark or evidence of SimNow performance.
 
-## Evidence and failure interpretation
+## Native run during market hours
 
-Every experiment contains `manifest.json`, per-run command/stdout/stderr, and
-`data/summary.json`. Timing runs also contain `data/samples.csv`. Callgrind runs
-retain raw output, the named `measured-batch` dump, annotation and `profile.json`.
-`runs.tsv` lists individual metrics; `comparison.tsv` reports run medians and
-ranges, including the median of per-run p99 values rather than a pooled p99.
-Only a fully successful experiment has a `COMPLETE` file.
+From the directory containing the usual .env, with a fresh output directory and the actual source revision:
 
-The manifest records source revision, binary SHA-256, CMake flags, kernel/WSL
-environment, CPU affinity, tool versions and arguments. Summaries record compiler,
-seed, counts and a deterministic 64-bit workload fingerprint. That fingerprint
-is an integer-mixing checksum, not a cryptographic hash or a market-data archive.
-Save the source snapshot/diff with the artifacts if the revision is dirty.
-Archive results outside the disposable WSL build directory before deleting it.
+```sh
+python3 scripts/profiling/run_simnow.py \
+  --binary build/Release-profile/jev_trading \
+  --config config.simnow.local.json --revision SOURCE_COMMIT \
+  --mode native --window 300 --grace 120 --capacity 10000 \
+  --out results/simnow-native-001
+python3 scripts/profiling/summarize_simnow.py results/simnow-native-001 \
+  > results/simnow-native-001/summary.json
+```
 
-An occupied output directory is rejected. Nonzero exit, timeout, count mismatch,
-sample overflow or missing measured Callgrind dump invalidates the experiment;
-inspect that run's stderr. Do not average its partial artifacts with good runs.
-The `--sample-capacity` bench option allows testing overflow behavior. It is not
-a sampling-rate control. Old log percentiles are not a fallback for lost samples.
+The runner does not invent a provider result and can submit simulated orders under the normal strategy. It records executable/config hashes, revision, UTC bounds, platform, affinity and selected runtime settings in run.json. It redirects normal application logs into the run directory and deletes the temporary config afterward. It does not archive .env or the full config. Record the compiler/build type, host load, VM resources, trading session, contract, provider/model and logging policy alongside the run. Never include credentials in this note.
 
-## Optional tools and later experiments
+Inspect capture.json and console.log before interpreting samples.csv. Confirm healthy venue shutdown, zero observation overflow, completed window and nonzero NEW samples. Inspect provider failures and business diagnostics. A successful script exit alone is not acceptance. Review OPEN and CLOSE_TODAY coverage separately; absent categories remain unverified. No complete submission means repeat during another session without forcing a mock decision.
 
-`perf stat -e cycles -- true` tests PMU availability. If available, use perf on a
-native throughput run to inspect CPU samples; otherwise test `cpu-clock` support.
-A WSL perf wrapper can mismatch the kernel: use the installed versioned binary
-only after checking it works. Record the event, frequency and tool version.
-Whole-process perf samples include preflight and setup, unlike the scoped
-Callgrind numbers; attribute them accordingly. FlameGraph visualization is optional.
-Massif is optional heap investigation, not proof of an allocation-free hot path.
+The summary reports adjacent differences and t8-t1 for NEW, t5-t8 intervals for CANCEL. It rejects malformed, duplicate, incomplete-window, overflowed or unhealthy captures. Small-sample percentiles are descriptive only. Compare distributions across several sessions with their conditions recorded; different market/provider inputs prevent a controlled speedup claim. Do not label observed order rate as maximum throughput.
 
-TODO: Design asynchronous arrival-rate, queueing, overload and real venue studies
-separately. This version does not measure those effects, simulate market event
-frequencies, introduce TSC timing, or gate CI on performance numbers.
+## Callgrind run during market hours
+
+Use a fresh process and directory. Keep the real SimNow/provider path. First establish that the SDK can login and remain healthy under Valgrind; if not, retain the failure and mark this acceptance item pending. Do not replace the SDK with a fake to satisfy it.
+
+```sh
+python3 scripts/profiling/run_simnow.py \
+  --binary build/Release-profile/jev_trading \
+  --config config.simnow.local.json --revision SOURCE_COMMIT \
+  --mode callgrind --window 300 --grace 120 --capacity 10000 \
+  --out results/simnow-callgrind-001
+```
+
+The runner supplies --tool=callgrind --collect-atstart=no --separate-threads=yes --cache-sim=no --branch-sim=no. Do not add --toggle-collect or --instr-atstart=no: those would conflict with the application controls. The collection scopes run only on the engine thread. Inspect each callgrind.out.* file with callgrind_annotate and identify the nonzero engine profile by its book/decision call paths:
+
+```sh
+callgrind_annotate --inclusive=yes --tree=both ENGINE_PROFILE_FILE > engine-inclusive.txt
+callgrind_annotate --inclusive=no ENGINE_PROFILE_FILE > engine-self.txt
+```
+
+Keep all raw thread files. Review profile_market_events and profile_decision_events in capture.json; they count scope entries, not successful orders. Check that polling, HTTP and gateway work have not contaminated the selected profile. Do not use summarize_simnow.py on Callgrind captures; it deliberately rejects their elapsed times. A healthy run with no complete NEW chain is useful collection evidence but does not finish the agreed live acceptance.
+
+## Acceptance record
+
+Record native and Callgrind runs independently: revision/hash, conditions, process return code, startup/login outcome, provider failures, connection/queue errors, window completion, observation overflow, complete NEW count, OPEN/CLOSE_TODAY coverage, and the selected engine profile. Retain raw artifacts before writing conclusions.
+
+Current live status: pending market-hours execution. Local tests do not replace this step. Optimization experiments and before/after claims are outside this delivery.

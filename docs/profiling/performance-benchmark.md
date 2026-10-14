@@ -1,113 +1,69 @@
-# Offline performance benchmark
+# SimNow performance benchmark
 
-`jev_bench` measures the participant-side C++ core with deterministic synthetic
-inputs. It answers how much work book maintenance and a synchronous trading cycle
-require, and which processing stages account for that work. It does not establish
-production HFT latency, live tick-to-trade, venue round-trip time, or system capacity
-under an external arrival rate. See [the experiment playbook](performance-experiments.md)
-for commands and artifacts.
+## Scope
 
-## Workloads
+Measure the existing SimNow application with the real Jev HTTP provider. There is no standalone synthetic benchmark. Native runs measure elapsed time; separate Callgrind runs explain engine instruction hotspots. Neither measures production-exchange latency or maximum sustainable throughput.
 
-| Scenario | Work performed | Why measure it? |
-| --- | --- | --- |
-| `snapshot-1`, `snapshot-5` | Replace a normalized book snapshot, with 1 or 5 populated levels per side | Cost of accepting a fresh book view |
-| `snapshot-boundary` | Valid, one-sided, empty, restored snapshot | Keep missing-liquidity paths visible |
-| `incremental-32/512/8192` | Seeded MODIFY/CANCEL/ADD/MODIFY blocks at the named resting-order population | Sensitivity to book size, lookup and level maintenance |
-| `incremental-boundary` | CLEAR, rebuild, remove the last order on a side, restore, modify | Separate reset and best-level removal costs |
-| `pipeline-hold` | Market update, features, evaluation, HOLD | State maintenance without order emission |
-| `pipeline-cancel` | Alternate NEW/ACCEPTED and CANCEL/CANCELED cycles | Order lifecycle and repricing cost |
-| `pipeline-fill` | Alternate open and close, each with ACCEPTED and full FILLED | Position, close allocation and PnL accounting cost |
+## Eight timestamps
 
-The measured book is `Trading::MarketOrderBook`, after venue normalization. Binance
-JSON parsing, snapshot/diff synchronization, transport and its adapter-side depth
-book are excluded. Snapshot storage always has five slots per side; populated
-depth is not a configurable storage capacity. Incremental populations have 4,
-64 and 1024 price levels per side, with four orders per level. Each four-event
-block has two MODIFY, one CANCEL and one ADD; occupancy drops by one temporarily.
-The boundary sequence has eight events including one CLEAR. These are controlled
-scenarios, not estimates of market event frequencies or near-capacity stress.
+All timestamps use the same process-local steady clock, expressed in nanoseconds. Zero means absent. The requested Chinese definitions are retained here and in the experiment guide.
 
-A synchronous cycle publishes one pre-generated valid snapshot, updates the real
-book/features, constructs the real evaluation state, registers one evaluation,
-runs a scripted provider through JevWorker, handles the decision, drives
-OrderGateway and consumes all prescribed responses. There are no worker threads
-or network requests. Automatic evaluation scheduling is not attached; input
-sequence rather than wall time controls evaluations. Queues are empty at each
-cycle boundary. Feature, risk, order and position code is shared with the app.
+| 时间戳 | 定义 |
+| --- | --- |
+| t1 | 进入 CTP 行情回调；不是 NIC 收包时间，也不包含 SDK 此前的接收处理。 |
+| t2 | MarketDataConsumer 所在线程从适配器行情事件队列取得该事件。 |
+| t3 | MarketDataConsumer 即将把标准化行情发布到交易引擎输入队列。 |
+| t4 | 交易引擎从行情输入队列取得该条标准化行情。 |
+| t5 | 交易引擎即将把实际订单请求发布到 OrderGateway 输入队列。 |
+| t6 | OrderGateway 从订单请求队列取得该请求。 |
+| t7 | OrderGateway 即将调用适配器提交接口，将请求交给适配器。 |
+| t8 | 适配器完成参数准备，即将调用 CTP 下单接口；不是 NIC 发包时间。撤单单独使用 CTP 撤单接口前的时间。 |
 
-Each HOLD cycle has zero requests/responses. A cancel pair has one NEW and one
-CANCEL, with one response per cycle. A fill pair has two NEW requests and four
-responses, ending flat with no live orders. Quantity is one; fixed bid/ask 100/101
-produces realized PnL of -1 per fill pair, before fees. Close uses CLOSE_TODAY.
-Order-size and position limits are one; the existing zero loss-limit setting
-disables cumulative-loss rejection so repetitions retain the same work. The
-single-order venue gate is not enabled. This is not coverage of every risk rule.
+The queue publication stamps precede the release that makes the event visible. Queue intervals therefore include the tail of publication, not just residence in queue. t7 is a synchronous module boundary, not another queue.
 
-## Metrics and boundaries
+| Interval | Interpretation |
+| --- | --- |
+| t2-t1 | Callback work and adapter market-event queue waiting |
+| t3-t2 | Market normalization and publication preparation |
+| t4-t3 | Engine market-input queue waiting, including publication tail |
+| t5-t4 | Evaluated market state to request publication, including asynchronous evaluation scheduling, provider HTTP work, decision waiting and local processing |
+| t6-t5 | Order-request queue waiting, including publication tail |
+| t7-t6 | Gateway processing before adapter handoff |
+| t8-t7 | Adapter and transport argument preparation before the CTP API call |
+| t8-t1 | Local callback-to-submission-call elapsed time for the evaluated source state |
 
-| Mode / metric | Included work | Interpretation |
-| --- | --- | --- |
-| `throughput`: operations/s, batch ns/operation | Measured batch including driver, result consumption and business counters | Fixed-work throughput; ns/operation is an average |
-| `latency`: book event duration | One book update call | Distribution of update processing costs, grouped by event type |
-| `latency`: cycle duration | Entire synchronous cycle, including queues, scripted provider and simulated venue | Controlled whole-cycle cost, not real execution latency |
-| `stages`: market duration | Book update plus feature and position market-state updates | Local work before an updated state is available |
-| `stages`: decision duration | Full decision handler, including early checks and risk/order actions | Decision processing, including no-request outcomes |
-| `stages`: response duration | Full response handler including order, position and PnL changes | Cost of acceptance, cancellation or fill processing |
-| `callgrind`: Ir, Ir/operation | Same fixed batch as throughput, collected under Valgrind | Executed instruction attribution and cost per input |
+Compute total elapsed time directly for each row. Never add stage percentiles to produce a total percentile. None of these intervals is an exchange acknowledgement RTT.
 
-Stage intervals include the existing business callbacks. They exclude queue-drain
-bookkeeping, preceding text logging, and the observer's storage callback. A null
-observer adds no stage clock reads. Existing application timestamp reads remain
-part of the workload. Whole-cycle and stage timings run in different processes
-with the same inputs. Stage p99 values cannot be added to obtain cycle p99.
-Decision labels include intent and actual emitted request type, or `no_request`.
-`no_request` can include HOLD, stale decisions, risk rejection or a pending order;
-it does not identify a unique rejection reason. Response types remain separate.
+## Provenance and sample population
 
-Durations use `steady_clock`, explicitly converted to nanoseconds. Report sample
-count, mean, nearest-rank p50/p90/p99 and maximum. For sorted N samples the rank
-is `ceil(q*N)`, starting at one. Maximum is an observation, not a latency bound.
-Small trial p99 values have little statistical value. WSL2 scheduling, host load
-and power management affect timing even with CPU affinity.
+The engine remembers the last consumed market event per instrument. An evaluation takes that source by value. JevWorker drains to the newest queued evaluation and copies that selected evaluation's metadata into its decision; provider-returned metadata cannot replace it. The decision carries the source into each NEW request it produces. A mismatched provider evaluation or instrument identity receives no source correlation.
 
-## Measurement validity
+The source identifies the evaluated state, not the sole cause of the order. Evaluation also uses features, account and position state. Execution pricing still uses the current book when the decision is handled, which can be newer than the evaluated quote. Multiple evaluations can share one source. Do not treat observations as independent market ticks.
 
-Inputs and sample storage are allocated before timing. Every input is first
-checked in an untimed preflight: an independent ordered-map model verifies book
-BBO after each update; snapshot checks compare all five levels and metadata;
-pipeline checks verify intermediate BBO, positions, order
-states, offsets and known PnL. A fresh measured instance then warms up. Measured
-results feed a rolling checksum after each operation, including full depth and
-metadata for snapshot components; that consumption cost is
-included in throughput and Callgrind, outside individual latency intervals.
-Pipeline business counters and request-field checks are included in cycle cost.
-Warmup and measurement counts align to scenario periods; state and IDs continue
-across warmup, but measured counts exclude it.
+The main population contains only NEW requests with all eight ordered timestamps, nonzero source/evaluation IDs, and an immediate CTP return code of zero. Report OPEN and CLOSE_TODAY separately. Code zero is local submission success, not exchange acceptance. HOLD, stale decisions, risk rejection, adapter rejection and immediate API failure do not enter the main report. Existing business logs describe them; there is no new performance outcome taxonomy. This successful-submission selection is biased and cannot describe all input events.
 
-The benchmark uses preallocated numeric samples, not the bounded text logger.
-Overflow, missing samples, unexpected work counts, queue residue or wrong output
-fails the run. Samples are written only afterward. An empty clock-pair control
-and clock-pair-plus-record batch estimate expose observation cost separately;
-these are controls, not corrections subtracted from percentiles. Stage record
-cost can affect later events even though it lies outside each stage interval.
+CANCEL requests have only t5-t8 and are reported separately. Shutdown-generated adapter cancellations bypass the engine queue and are not samples. No response-processing metrics, provider-duration metrics, NIC timestamps or order-confirmation correlation are collected.
 
-Callgrind collects only the measured batch; initialization, preflight, warmup,
-sorting and output are excluded. Counts depend on the binary, libraries,
-workload and runtime path. Branch simulation is optional model output, not
-hardware branch-miss measurement. Never use Valgrind wall time as native latency.
-Massif can describe live heap size but a plateau does not prove zero allocations.
+## Collection and validity
 
-The experiment runner uses fresh processes, records build/environment/input
-identity, and checks business-result equivalence across modes and repetitions.
-It reports individual runs and median/min/max across runs; it does not pool
-latency samples from different runs or enforce timing thresholds in CI.
+Capture is opt-in and SimNow-only. Main arms it after venue readiness. CTP callbacks admit new sources for window_seconds. Evaluations built after that window carry no observation metadata; previously queued/selected evaluations can finish during grace_seconds. Recording accepts submissions whose t8 is before the grace deadline. Admission stopping never disables normal evaluations or trading. Late and incomplete chains are omitted, so finite grace still censors slow chains.
 
-## Existing TTT observations
+Samples use preallocated storage written only by the gateway thread. The market callback owns source numbering; the engine owns source selection. Metadata crosses existing SPSC queues by value. Export happens after workers join, outside measured intervals. Capacity exhaustion increments overflow without changing order execution; any overflow invalidates the statistical report. Files are never silently overwritten. Normal shutdown before the deadline is marked incomplete. Fatal process termination may leave no capture files; retain console/run evidence and do not treat it as a successful experiment.
 
-Old `ttt_order_round_trip` records response-publication-to-consumption time, not
-request-to-response RTT. Old `ttt_decision_to_order` records part of decision
-handling and can include no-request paths. These live event names are retained;
-the new benchmark does not derive metrics from them. Historical whole-process
-Callgrind totals and lossy-log percentiles under `baseline/` and
-`optimization-after/` are not directly comparable with this protocol.
+The summary reports n, min, max and nearest-rank p50/p95/p99 in nanoseconds by request type and offset. Counts below 1000 carry a tail-sample warning, not a guarantee that 1000 samples suffice. Provider failures, venue health and window completion are recorded. No complete NEW samples means live acceptance remains pending.
+
+Clock reads, metadata copies and the enabled collector have overhead. The disabled path avoids observation clock reads, but enlarged internal queue messages still occupy memory. Keep the same logging settings across native runs; business callbacks and logging inside processing remain part of the workload. Do not subtract an estimated clock cost from percentiles or claim nanosecond clock resolution equals measurement accuracy.
+
+## Callgrind
+
+Run the same application under Callgrind with --collect-atstart=no and --separate-threads=yes. Instrumentation stays enabled; collection toggles only on the engine thread around book plus market handling and around decision handling. RAII restores collection on early returns or exceptions. Queue polling, response handling, gateway, adapter, HTTP worker and report output are outside these scopes. Tiny scope-control costs remain in the profile.
+
+The collection window uses scope entry time, so a scope started before its end can finish afterward. Market and decision counts cover all collected scopes, including HOLD and rejected decisions; these counts differ from complete order samples. Inspect the engine thread's inclusive/self instruction costs and call tree. Do not divide combined profile instructions by successful orders, infer separate per-stage costs from one mixed total, or interpret Callgrind wall time as native latency.
+
+Valgrind slows the whole process even while collection is off. It can change provider timeouts, queue occupancy and decision staleness. SDK compatibility and live capture validity require actual SimNow evidence. The local callgrind_scope_test verifies collection exclusion across threads; it does not certify live SDK compatibility.
+
+References: https://valgrind.org/docs/manual/cl-manual.html#cl-manual.limits and https://valgrind.org/docs/manual/cl-manual.html#cl-manual.clientrequests .
+
+## Delivery status
+
+Implementation and local checks are separate from live acceptance. Real SimNow native and Callgrind trials are pending a trading session. No live latency baseline or optimization claim is established by this change. Archived baseline/ and optimization-after/ artifacts belong to retired synthetic protocols and are not comparable to this protocol.
