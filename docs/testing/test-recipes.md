@@ -25,11 +25,27 @@ names read as scenario-plus-expectation sentences.
   single-consumer stress conveys 10,000 messages in order under a bounded
   deadline.
 - Message builder (`MessageBuilderTest`, unit): fresh buffer empty, chained
-  append formatting, zero capacity drops, truncation at capacity, appends
-  after truncation dropped.
+  append formatting, zero capacity never touches storage, one-byte capacity
+  holds only the terminator, empty appends, exact fit with adjacent-byte
+  guards, signed/unsigned integer limits, integer truncation, truncation at
+  capacity, and appends after truncation dropped.
+- Log level names (`LogLevelNameTest`, unit): all four record labels and the
+  unknown-level fallback.
 - Async logger (`AsyncLoggerTest`, integration): fixed-buffer formatting and
   truncation, per-producer files, overflow drops, late-registered producer
-  visibility after start, worker-thread binding.
+  visibility after start, worker-thread binding. Overflow is forced before
+  starting the consumer so scheduling cannot change the expected result.
+- Async logger boundaries (`AsyncLoggerContractTest`, integration): invalid
+  configuration, zero poll interval, component-name boundaries, file-open
+  failure with subsequent registration, FIFO shutdown drain, empty/exact-fit/
+  oversized messages through both logging APIs, formatter skipped on overflow,
+  destructor drain of all queues, repeated start/stop, stop before first start,
+  restart and registration rejected after shutdown, first-write binding,
+  foreign-thread writes ignored, and handle move construction/assignment.
+  Tests use unique temporary directories with fixture cleanup, join producers
+  before shutdown, and compare complete records after closing files. Timestamp
+  checks cover syntax only, not elapsed time. Binding timeout outcomes remain
+  deferred because the current API returns no completion status.
 - Component logging (`ComponentLoggingTest`, integration): externally registered
   handles transferred into worker components, lifecycle file routing, deferred
   market publisher binding, Binance construction without binding, separate

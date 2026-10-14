@@ -100,7 +100,8 @@ class AsyncLogger final {
         /// A formatting cursor that appends text into fixed-capacity
         /// character storage without heap allocation. Appends past the
         /// capacity are dropped, so a formatted line is at most truncated,
-        /// never overrun. Text is kept NUL-terminated after every append.
+        /// never overrun. Nonempty storage is kept NUL-terminated after
+        /// every append; zero capacity never accesses storage.
         /// A MessageBuilder is created locally per logFixed() call; its
         /// storage pointer, capacity, and cursor live here, not in the
         /// ProducerHandle.
@@ -108,10 +109,15 @@ class AsyncLogger final {
           public:
             MessageBuilder(char* storage, std::size_t capacity) noexcept
                     : storage_(storage), capacity_(capacity) {
-                storage_[0] = '\0';
+                if (capacity_ != 0) {
+                    storage_[0] = '\0';
+                }
             }
 
             auto append(std::string_view text) noexcept -> MessageBuilder& {
+                if (capacity_ == 0) {
+                    return *this;
+                }
                 const auto remaining = capacity_ - 1 - used_;
                 const auto count = text.size() < remaining ? text.size() : remaining;
                 for (std::size_t i = 0; i < count; ++i) {
@@ -257,6 +263,7 @@ class AsyncLogger final {
 
     auto waitForProducerBindings(std::size_t expected_producers,
                                  std::chrono::milliseconds timeout) -> void {
+        // TODO: Return binding completion status so callers can detect timeouts.
         std::unique_lock lock(mutex_);
         binding_cv_.wait_for(lock, timeout, [this, expected_producers] {
             if (producers_.size() != expected_producers) {
@@ -271,12 +278,15 @@ class AsyncLogger final {
         });
     }
 
+    /// Start once. Calls while running are no-ops; calls after stop throw.
     auto start() -> void {
         std::scoped_lock lock(mutex_);
+        if (stopped_) {
+            throw std::logic_error("Cannot restart logger after stop");
+        }
         if (started_) {
             return;
         }
-        stopped_ = false;
         started_ = true;
         running_.store(true, std::memory_order_release);
         worker_ = std::jthread([this] { run(); });

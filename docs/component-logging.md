@@ -47,10 +47,23 @@ TTT and market handles may remain unbound until the first message.
 Keep the logger alive for the entire component lifetime. Stop and join every
 producer before stopping the logger so its final drain includes pending log
 records. Logger handles expose only producer operations and do not own the
-logger or its queues. `ProducerHandle::MessageBuilder` and existing event text
-remain unchanged.
+logger or its queues.
 
-Offline coverage is in `ComponentLoggingTest`, `AsyncLoggerTest`, and
+The logger has a single start/stop lifecycle. Calling `start()` while running
+or calling `stop()` repeatedly is a no-op. Calling `stop()` before the first
+start leaves queued records and producer registration available. Once a
+started logger has stopped, `start()` and `registerProducer()` throw
+`std::logic_error`; create another logger for another session. Destruction
+stops a started logger and drains its queues. A logger that was never started
+does not drain queued records.
+
+Messages retain at most 1,023 bytes plus a NUL terminator. The standalone
+`ProducerHandle::MessageBuilder` also accepts zero capacity, in which case it
+never accesses storage. Queue overflow drops the new record; `logFixed()`
+does not call its formatter when no slot is available.
+
+Offline coverage is in `ComponentLoggingTest`, `AsyncLoggerTest`,
+`AsyncLoggerContractTest`, and
 `TttInstrumentationTest`. Worker tests use joins or bounded futures before
 stopping the logger and inspecting files. The Binance queue test uses an
 offline friend harness to inject the same events the WebSocket callbacks enqueue.

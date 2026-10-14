@@ -292,10 +292,11 @@ TEST(AsyncLoggerTest, DropsRecordsWhenTheQueueOverflows) {
 
     Common::AsyncLogger logger(output_dir, 1, std::chrono::milliseconds(1));
     auto producer = logger.registerProducer("Overflow", "overflow.log");
-    logger.start();
 
+    // Fill the queue before starting the consumer so overflow is deterministic.
     producer.log(Common::LogLevel::DEBUG, "first");
     producer.log(Common::LogLevel::DEBUG, "dropped");
+    logger.start();
     logger.stop();
 
     const std::string text = readWholeFile(output_dir / "overflow.log");

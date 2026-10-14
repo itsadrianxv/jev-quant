@@ -2,6 +2,9 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <string>
 #include <string_view>
 
 #include "common/async_logger.h"
@@ -31,15 +34,75 @@ TEST(MessageBuilderTest, ChainedAppendsFormatTextAndIntegers) {
     EXPECT_EQ("event=test id=42 seq=7", std::string_view(storage.data()));
 }
 
-// With a zero-capacity buffer every append is a no-op and the storage stays
-// empty instead of overflowing.
-TEST(MessageBuilderTest, ZeroCapacityBufferDropsEveryAppend) {
+// A one-byte buffer reserves its only byte for the NUL terminator.
+TEST(MessageBuilderTest, OneByteBufferDropsEveryAppend) {
     std::array<char, 1> storage{};
     MessageBuilder builder(storage.data(), storage.size());
 
     builder.append("ignored").append(1);
 
     EXPECT_EQ("", std::string_view(storage.data()));
+}
+
+TEST(MessageBuilderTest, ZeroCapacityBufferNeverTouchesStorage) {
+    char sentinel = '!';
+    MessageBuilder builder(&sentinel, 0);
+    EXPECT_EQ('!', sentinel);
+
+    builder.append("ignored").append(42).append("");
+
+    EXPECT_EQ('!', sentinel);
+}
+
+TEST(MessageBuilderTest, ZeroCapacityAcceptsNullStorage) {
+    MessageBuilder builder(nullptr, 0);
+
+    EXPECT_EQ(&builder, &builder.append("ignored").append(-1));
+}
+
+TEST(MessageBuilderTest, EmptyAppendPreservesExistingText) {
+    std::array<char, 8> storage{};
+    MessageBuilder builder(storage.data(), storage.size());
+
+    builder.append("").append("text").append("");
+
+    EXPECT_EQ("text", std::string_view(storage.data()));
+}
+
+TEST(MessageBuilderTest, ExactFitPreservesTerminatorAndAdjacentBytes) {
+    std::array<char, 10> storage;
+    storage.fill('!');
+    MessageBuilder builder(storage.data() + 1, 8);
+
+    builder.append("abc").append("defg").append("ignored");
+
+    EXPECT_EQ("abcdefg", std::string_view(storage.data() + 1));
+    EXPECT_EQ('\0', storage[8]);
+    EXPECT_EQ('!', storage.front());
+    EXPECT_EQ('!', storage.back());
+}
+
+TEST(MessageBuilderTest, FormatsSignedAndUnsignedIntegerLimits) {
+    std::array<char, 80> storage{};
+    MessageBuilder builder(storage.data(), storage.size());
+
+    builder.append(std::numeric_limits<std::int64_t>::min()).append(" ")
+            .append(std::numeric_limits<std::int64_t>::max()).append(" ")
+            .append(std::numeric_limits<std::uint64_t>::max()).append(" ")
+            .append(0);
+
+    EXPECT_EQ("-9223372036854775808 9223372036854775807 18446744073709551615 0",
+              std::string_view(storage.data()));
+}
+
+TEST(MessageBuilderTest, TruncatesIntegerWhenOnlyItsPrefixFits) {
+    std::array<char, 8> storage{};
+    MessageBuilder builder(storage.data(), storage.size());
+
+    builder.append("id=").append(-12345);
+
+    EXPECT_EQ("id=-123", std::string_view(storage.data()));
+    EXPECT_EQ('\0', storage.back());
 }
 
 // Text longer than the buffer is truncated at capacity and remains a valid

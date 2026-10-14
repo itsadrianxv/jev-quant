@@ -201,6 +201,7 @@ jev_add_gtest_test(unit_tests LABEL unit
                 tests/unit/risk_manager_test.cpp
 tests/unit/lf_queue_test.cpp
                 tests/unit/message_builder_test.cpp
+                tests/unit/async_logger_test.cpp
                 tests/unit/mem_pool_test.cpp
                 tests/unit/market_order_book_test.cpp
                 tests/unit/binance_depth_book_test.cpp
@@ -216,7 +217,8 @@ jev_add_gtest_test(component_tests LABEL component
                 tests/component/decision_matrix_test.cpp
                 tests/component/order_state_machine_test.cpp)
 jev_add_gtest_test(integration_tests LABEL integration
-        SOURCES tests/integration/integration_tests.cpp)
+        SOURCES tests/integration/integration_tests.cpp
+                tests/integration/async_logger_test.cpp)
 # The integration suite locates the local mock decision server by absolute
 # source path because ctest invokes each case from the build directory.
 target_compile_definitions(integration_tests PRIVATE
