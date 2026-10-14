@@ -25,6 +25,7 @@
 #include "order_manager.h"
 #include "position_keeper.h"
 #include "risk_manager.h"
+#include "processing_observer.h"
 
 namespace Trading {
 
@@ -64,6 +65,11 @@ class TradeEngine final {
 
     /// Drain available queues once in response, market, and Jev order.
     auto processPending() -> bool;
+
+    /// Configure before start. Null disables stage timing and sample collection.
+    auto setProcessingObserver(ProcessingObserver* observer) noexcept -> void {
+        processing_observer_ = observer;
+    }
 
     /// Send a request to the OrderGateway queue.
     auto sendClientRequest(const Exchange::ClientRequest& request) -> void;
@@ -163,6 +169,9 @@ class TradeEngine final {
     /// Dedicated producer for tick-to-trade latency records. Its file is the
     /// single output consumed by offline percentile analysis.
     std::optional<Common::AsyncLogger::ProducerHandle> ttt_handle_;
+    ProcessingObserver* processing_observer_ = nullptr;
+    std::uint32_t observed_request_count_ = 0;
+    std::uint32_t observed_request_type_ = 0;
 
     const Common::ClientId client_id_ = Common::ClientId_INVALID;
     PositionKeeper position_keeper_;

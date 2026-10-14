@@ -166,22 +166,19 @@ function(jev_add_gtest_test name)
             DISCOVERY_TIMEOUT 120)
 endfunction()
 
-# Deterministic participant-pipeline bench. The smoke drives a small fixed
-# load in-process with the mock decision provider (no network) and asserts
-# the per-segment TTT summary is printed at exit.
+# Offline component and synchronous pipeline measurements; no network.
 add_executable(jev_bench src/tools/jev_bench.cpp)
 target_link_libraries(jev_bench PRIVATE jev_trading_core)
 target_compile_options(jev_bench PRIVATE -Wall -Wextra -Wpedantic)
-
-add_test(NAME bench_smoke
-                COMMAND jev_bench --updates 64
-                                        --out "${CMAKE_CURRENT_BINARY_DIR}/bench-smoke-logs")
-set_tests_properties(bench_smoke PROPERTIES PASS_REGULAR_EXPRESSION "ttt_market_data_consumed;ttt_order_round_trip")
 
 # The percentile analysis script is standard-library-only; verify it against
 # the committed fixture whenever an interpreter is available.
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_FOUND)
+    add_test(NAME benchmark_contract
+            COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/benchmark_test.py"
+                    $<TARGET_FILE:jev_bench>)
+    set_tests_properties(benchmark_contract PROPERTIES LABELS integration TIMEOUT 180)
     add_test(NAME ttt_percentiles_fixture
                     COMMAND ${Python3_EXECUTABLE}
                             "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ttt_percentiles.py"
@@ -222,7 +219,8 @@ tests/unit/lf_queue_test.cpp
 jev_add_gtest_test(component_tests LABEL component
         SOURCES tests/component/component_tests.cpp
                 tests/component/decision_matrix_test.cpp
-                tests/component/order_state_machine_test.cpp)
+                tests/component/order_state_machine_test.cpp
+                tests/component/processing_observer_test.cpp)
 jev_add_gtest_test(integration_tests LABEL integration
         SOURCES tests/integration/integration_tests.cpp
                 tests/integration/market_data_worker_test.cpp

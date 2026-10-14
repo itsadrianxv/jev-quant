@@ -63,6 +63,51 @@ TEST(MarketOrderBookTest, SnapshotUpdateDerivesBboFromFrontLevels) {
     EXPECT_EQ(MarketOrderBook::BookMode::DEPTH_SNAPSHOT, book.mode());
 }
 
+TEST(MarketOrderBookTest, SnapshotReplacementPreservesDeepLevelsAndClearsOldMetadata) {
+    MarketOrderBook book(0);
+    Exchange::DepthSnapshot full;
+    for (std::size_t i = 0; i < Common::DEPTH_SNAPSHOT_LEVELS; ++i) {
+        full.bids_[i] = {100 - static_cast<Price>(i), static_cast<Qty>(i + 1)};
+        full.asks_[i] = {101 + static_cast<Price>(i), static_cast<Qty>(i + 2)};
+    }
+    full.last_price_ = 101;
+    full.volume_ = 123;
+    full.open_interest_ = 456.5;
+    full.upper_limit_price_ = 120;
+    full.lower_limit_price_ = 80;
+    book.onDepthSnapshot(full);
+    const auto* actual = book.getDepthSnapshot();
+    for (std::size_t i = 0; i < Common::DEPTH_SNAPSHOT_LEVELS; ++i) {
+        EXPECT_EQ(actual->bids_[i].price_, full.bids_[i].price_);
+        EXPECT_EQ(actual->bids_[i].qty_, full.bids_[i].qty_);
+        EXPECT_EQ(actual->asks_[i].price_, full.asks_[i].price_);
+        EXPECT_EQ(actual->asks_[i].qty_, full.asks_[i].qty_);
+    }
+    EXPECT_EQ(actual->last_price_, 101);
+    EXPECT_EQ(actual->volume_, 123U);
+    EXPECT_EQ(actual->open_interest_, 456.5);
+    EXPECT_EQ(actual->upper_limit_price_, 120);
+    EXPECT_EQ(actual->lower_limit_price_, 80);
+    Exchange::DepthSnapshot replacement;
+    replacement.bids_[0] = {98, 7};
+    book.onDepthSnapshot(replacement);
+    actual = book.getDepthSnapshot();
+    EXPECT_EQ(actual->bids_[0].price_, 98);
+    for (std::size_t i = 1; i < Common::DEPTH_SNAPSHOT_LEVELS; ++i) {
+        EXPECT_EQ(actual->bids_[i].price_, Common::Price_INVALID);
+        EXPECT_EQ(actual->bids_[i].qty_, Common::Qty_INVALID);
+    }
+    for (const auto& ask : actual->asks_) {
+        EXPECT_EQ(ask.price_, Common::Price_INVALID);
+        EXPECT_EQ(ask.qty_, Common::Qty_INVALID);
+    }
+    EXPECT_EQ(actual->last_price_, Common::Price_INVALID);
+    EXPECT_EQ(actual->volume_, Common::Qty_INVALID);
+    EXPECT_EQ(actual->open_interest_, 0.0);
+    EXPECT_EQ(actual->upper_limit_price_, Common::Price_INVALID);
+    EXPECT_EQ(actual->lower_limit_price_, Common::Price_INVALID);
+}
+
 // Installing a depth snapshot after the book has already received an
 // incremental (ADD) update is a mode violation and must fail fast.
 TEST(MarketOrderBookTest, DirectSnapshotInstallInIncrementalModeThrowsLogicError) {

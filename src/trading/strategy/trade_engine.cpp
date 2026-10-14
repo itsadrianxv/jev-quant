@@ -136,7 +136,13 @@ auto TradeEngine::processClientResponses() -> bool {
                                               .append(response->ticker_id_);
                                   });
         }
+        const auto stage_start = processing_observer_ ? Common::nowSteadyNs() : 0;
         handleClientResponse(*response);
+        if (processing_observer_) {
+            processing_observer_->record({ProcessingStage::RESPONSE,
+                    static_cast<std::uint32_t>(response->type_),
+                    Common::nowSteadyNs() - stage_start});
+        }
         incoming_responses_->updateReadIndex();
         processed = true;
     }
@@ -165,8 +171,14 @@ auto TradeEngine::processMarketUpdates() -> bool {
                                               .append(update->ticker_id_);
                                   });
         }
+        const auto stage_start = processing_observer_ ? Common::nowSteadyNs() : 0;
         book.onMarketUpdate(*update);
         handleMarketUpdate(*update, book);
+        if (processing_observer_) {
+            processing_observer_->record({ProcessingStage::MARKET,
+                    static_cast<std::uint32_t>(update->type_),
+                    Common::nowSteadyNs() - stage_start});
+        }
         incoming_market_updates_->updateReadIndex();
         processed = true;
     }
@@ -190,7 +202,18 @@ auto TradeEngine::processJevDecisions() -> bool {
                                               .append(decision->evaluation_id_);
                                   });
         }
+        if (processing_observer_) {
+            observed_request_count_ = 0;
+            observed_request_type_ = 0;
+        }
+        const auto stage_start = processing_observer_ ? Common::nowSteadyNs() : 0;
         handleJevDecision(*decision);
+        if (processing_observer_) {
+            processing_observer_->record({ProcessingStage::DECISION,
+                    static_cast<std::uint32_t>(decision->intent_),
+                    Common::nowSteadyNs() - stage_start,
+                    observed_request_count_, observed_request_type_});
+        }
         incoming_jev_decisions_->updateReadIndex();
         processed = true;
     }
@@ -432,6 +455,10 @@ auto TradeEngine::sendClientRequest(const Exchange::ClientRequest& request)
     }
     *slot = request;
     outgoing_requests_->updateWriteIndex();
+    if (processing_observer_) {
+        ++observed_request_count_;
+        observed_request_type_ = static_cast<std::uint32_t>(request.type_);
+    }
     if (log_handle_) {
         log_handle_->logFixed(Common::LogLevel::INFO,
                               [&](auto& out) {
