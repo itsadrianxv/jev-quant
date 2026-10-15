@@ -1,0 +1,126 @@
+Preparing simnow venue adapter
+Starting Jev worker
+Starting trade engine
+Starting market data consumer
+Starting order gateway
+event=simnow_startup stage=authenticate request=1
+event=simnow_startup stage=trader_login request=2
+WARNING: you should run this program as super-user.
+WARNING: output may be incomplete or inaccurate, you should run this program as super-user.
+sh: 1: dmidecode: not found
+sh: 1: dmidecode: not found
+event=simnow_startup stage=settlement_confirmation request=3
+event=simnow_query stage=instrument_query request=4
+event=simnow_startup stage=market_login request=1
+event=simnow_startup stage=market_subscription request=2
+event=simnow_query stage=account_query request=5
+event=simnow_query stage=position_query request=6
+event=simnow_query stage=order_query request=7
+simnow venue adapter connected
+jev_trading running
+event=simnow_query stage=account_query request=8
+event=live_jev_decision evaluation_id=1 intent=3
+event=live_jev_decision evaluation_id=2 intent=3
+event=live_jev_decision evaluation_id=3 intent=3
+event=live_jev_decision evaluation_id=4 intent=3
+event=live_jev_decision evaluation_id=5 intent=3
+event=live_jev_decision evaluation_id=6 intent=3
+event=simnow_query stage=account_query request=9
+event=live_jev_decision evaluation_id=7 intent=3
+event=live_jev_decision evaluation_id=8 intent=3
+event=live_jev_decision evaluation_id=9 intent=3
+event=live_jev_decision evaluation_id=10 intent=3
+event=live_jev_decision evaluation_id=11 intent=3
+event=live_jev_decision evaluation_id=12 intent=3
+event=simnow_query stage=account_query request=10
+event=live_jev_decision evaluation_id=13 intent=3
+event=live_jev_decision evaluation_id=14 intent=3
+event=live_jev_decision evaluation_id=15 intent=3
+event=live_jev_decision evaluation_id=16 intent=3
+event=live_jev_decision evaluation_id=17 intent=3
+event=live_jev_decision evaluation_id=18 intent=3
+event=simnow_query stage=account_query request=11
+event=live_jev_decision evaluation_id=19 intent=3
+event=live_jev_decision evaluation_id=20 intent=3
+event=live_jev_decision evaluation_id=21 intent=3
+event=live_jev_decision evaluation_id=22 intent=3
+event=live_jev_decision evaluation_id=23 intent=3
+event=live_jev_decision evaluation_id=24 intent=3
+event=simnow_query stage=account_query request=12
+event=live_jev_decision evaluation_id=25 intent=3
+event=live_jev_decision evaluation_id=26 intent=3
+event=live_jev_decision evaluation_id=27 intent=3
+event=live_jev_decision evaluation_id=28 intent=3
+event=live_jev_decision evaluation_id=29 intent=3
+event=live_jev_decision evaluation_id=30 intent=3
+event=simnow_query stage=account_query request=13
+event=live_jev_decision evaluation_id=31 intent=3
+event=live_jev_decision evaluation_id=32 intent=3
+event=live_jev_decision evaluation_id=33 intent=3
+event=live_jev_decision evaluation_id=34 intent=3
+event=live_jev_decision evaluation_id=35 intent=3
+event=live_jev_decision evaluation_id=36 intent=3
+event=simnow_query stage=account_query request=14
+event=live_jev_decision evaluation_id=37 intent=3
+event=live_jev_decision evaluation_id=38 intent=3
+event=live_jev_decision evaluation_id=39 intent=3
+event=live_jev_decision evaluation_id=40 intent=1
+event=live_position_updated order_id=event=simnow_response order=1 type=FILLED exec_qty=1
+1 position=-1
+event=live_jev_decision evaluation_id=41 intent=2
+event=live_position_updated order_id=2 position=0
+event=simnow_response order=2 type=FILLED exec_qty=1
+event=live_jev_decision evaluation_id=42 intent=3
+event=simnow_query stage=account_query request=17
+event=live_jev_decision evaluation_id=43 intent=3
+event=live_jev_decision evaluation_id=44 intent=3
+event=live_jev_decision evaluation_id=45 intent=3
+event=live_jev_decision evaluation_id=46 intent=3
+event=live_jev_decision evaluation_id=47 intent=3
+event=live_jev_decision evaluation_id=48 intent=3
+event=simnow_query stage=account_query request=18
+event=live_jev_decision evaluation_id=49 intent=3
+event=live_jev_decision evaluation_id=50 intent=3
+event=live_jev_decision evaluation_id=51 intent=3
+event=live_jev_decision evaluation_id=52 intent=3
+event=live_jev_decision evaluation_id=53 intent=3
+event=live_jev_decision evaluation_id=54 intent=3
+event=simnow_query stage=account_query request=19
+event=live_jev_decision evaluation_id=55 intent=3
+event=live_jev_decision evaluation_id=56 intent=3
+event=live_jev_decision evaluation_id=57 intent=3
+event=live_jev_decision evaluation_id=58 intent=3
+event=live_jev_decision evaluation_id=59 intent=3
+event=live_jev_decision evaluation_id=60 intent=3
+event=simnow_query stage=account_query request=20
+event=live_jev_decision evaluation_id=61 intent=3
+event=live_jev_decision evaluation_id=62 intent=3
+event=live_jev_decision evaluation_id=63 intent=3
+event=live_jev_decision evaluation_id=64 intent=3
+event=live_jev_decision evaluation_id=65 intent=3
+event=live_jev_decision evaluation_id=66 intent=3
+event=simnow_query stage=account_query request=21
+event=live_jev_decision evaluation_id=67 intent=3
+event=live_jev_decision evaluation_id=68 intent=3
+event=live_jev_decision evaluation_id=69 intent=3
+event=live_jev_decision evaluation_id=70 intent=3
+event=live_jev_decision evaluation_id=71 intent=3
+event=live_jev_decision evaluation_id=72 intent=3
+event=simnow_query stage=account_query request=22
+event=live_jev_decision evaluation_id=73 intent=3
+event=live_jev_decision evaluation_id=74 intent=3
+event=live_jev_decision evaluation_id=75 intent=3
+event=live_jev_decision evaluation_id=76 intent=3
+event=live_jev_decision evaluation_id=77 intent=3
+event=live_jev_decision evaluation_id=78 intent=3
+event=simnow_query stage=account_query request=23
+event=live_jev_decision evaluation_id=79 intent=3
+event=live_jev_decision evaluation_id=80 intent=3
+event=live_jev_decision evaluation_id=81 intent=3
+event=live_jev_decision evaluation_id=82 intent=3
+event=live_jev_decision evaluation_id=83 intent=3
+event=live_jev_decision evaluation_id=84 intent=3
+event=simnow_query stage=account_query request=24
+event=live_jev_decision evaluation_id=85 intent=3
+event=live_jev_decision evaluation_id=86 intent=3
+event=simnow_stopped position=0 unresolved=0

@@ -1,0 +1,20 @@
+{
+  "capacity": 10000,
+  "clock": "steady_clock_nanoseconds",
+  "end_ns": 3158839194230,
+  "export_ns": 3158924167391,
+  "grace_ns": 120000000000,
+  "healthy": true,
+  "live_acceptance": "pending_manual_evidence_review",
+  "mode": "native",
+  "new_samples": 0,
+  "overflow": 0,
+  "profile_decision_events": 0,
+  "profile_market_events": 0,
+  "provider_failures": 19,
+  "samples": 0,
+  "schema": 1,
+  "start_ns": 3068562494975,
+  "window_completed": false,
+  "window_ns": 300000000000
+}

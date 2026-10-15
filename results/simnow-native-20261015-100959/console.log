@@ -1,0 +1,8 @@
+Preparing simnow venue adapter
+Starting Jev worker
+Starting trade engine
+Starting market data consumer
+Starting order gateway
+event=simnow_failure reason=SimNow startup timed out
+event=simnow_stopped position=0 unresolved=0
+jev_trading startup failure: SimNow startup timed out

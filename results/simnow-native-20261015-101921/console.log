@@ -1,0 +1,18 @@
+Preparing simnow venue adapter
+Starting Jev worker
+Starting trade engine
+Starting market data consumer
+Starting order gateway
+event=simnow_startup stage=market_login request=1
+event=simnow_startup stage=authenticate request=1
+event=simnow_startup stage=market_subscription request=2
+event=simnow_startup stage=trader_login request=2
+WARNING: you should run this program as super-user.
+WARNING: output may be incomplete or inaccurate, you should run this program as super-user.
+sh: 1: dmidecode: not found
+sh: 1: dmidecode: not found
+event=simnow_startup stage=settlement_confirmation request=3
+event=simnow_query stage=instrument_query request=4
+event=simnow_failure reason=Configured instrument is not an eligible SHFE futures contract
+event=simnow_stopped position=0 unresolved=0
+jev_trading startup failure: Configured instrument is not an eligible SHFE futures contract
