@@ -192,7 +192,7 @@ int main(int argc, char** argv) {
         // Keep the engine consuming responses while SimNow cancels outstanding orders.
         // TODO(lifecycle): Add cooperative cancellation to provider calls during shutdown.
         const auto shutdown = [&] {
-            if (measurement) measurement->finish();
+            if (measurement) measurement->stopCapture();
             if (simnow) engine.disableVenueTrading();
             market_data.stop();
             venue->quiesce();
@@ -235,7 +235,7 @@ int main(int argc, char** argv) {
         }
         shutdown();
         if (measurement) {
-            measurement->write(perf_directory, !venue->failed(), jev_worker.failureCount());
+            measurement->exportTrace(perf_directory, !venue->failed(), jev_worker.failureCount());
         }
         if (venue->failed()) return 1;
         if (simnow) {

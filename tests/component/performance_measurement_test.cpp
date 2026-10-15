@@ -10,53 +10,53 @@ namespace {
 TEST(PerformanceMeasurement, ShutdownTimeDeterminesCompletionNotDelayedExport) {
     Trading::Measurement m(1, 100, 50, false);
     m.startCapture(100);
-    m.finish(200);
+    m.stopCapture(200);
     const auto directory = std::filesystem::temp_directory_path() /
         ("simnow-measurement-test-" + std::to_string(Common::nowSteadyNs()));
-    m.write(directory.string(), true, 0);
+    m.exportTrace(directory.string(), true, 0);
     nlohmann::json metadata;
     std::ifstream(directory / "capture.json") >> metadata;
     EXPECT_FALSE(metadata.at("window_completed").get<bool>());
     EXPECT_EQ(metadata.at("new_samples"), 0);
-    EXPECT_THROW(m.write(directory.string(), true, 0), std::runtime_error);
+    EXPECT_THROW(m.exportTrace(directory.string(), true, 0), std::runtime_error);
     std::filesystem::remove_all(directory);
 }
 
 TEST(PerformanceMeasurement, BoundsAdmissionGraceSuccessAndOverflow) {
     Trading::Measurement m(1, 100, 50, false);
-    EXPECT_EQ(m.source(100).source_id, 0U);
+    EXPECT_EQ(m.createTrace(100).source_id, 0U);
     m.startCapture(100);
     EXPECT_THROW(m.startCapture(101), std::logic_error);
-    EXPECT_FALSE(m.admitting(99));
-    EXPECT_TRUE(m.admitting(199));
-    EXPECT_FALSE(m.admitting(200));
-    EXPECT_TRUE(m.collecting(249));
-    EXPECT_FALSE(m.collecting(250));
+    EXPECT_FALSE(m.isWithinAdmissionWindow(99));
+    EXPECT_TRUE(m.isWithinAdmissionWindow(199));
+    EXPECT_FALSE(m.isWithinAdmissionWindow(200));
+    EXPECT_TRUE(m.isWithinCollectionWindow(249));
+    EXPECT_FALSE(m.isWithinCollectionWindow(250));
     Exchange::ClientRequest r;
     r.type_ = Exchange::ClientRequestType::NEW;
-    r.trace_ = m.source(110);
+    r.trace_ = m.createTrace(110);
     r.trace_.evaluation_id = 1;
     r.trace_.t = {110,120,130,140,210,220,230,240};
-    m.record(r, -1);
+    m.recordTrace(r, -1);
     EXPECT_EQ(m.size(), 0U);
     auto missing = r;
     missing.trace_.t[2] = 0;
-    m.record(missing, 0);
+    m.recordTrace(missing, 0);
     auto reversed = r;
     reversed.trace_.t[2] = 119;
-    m.record(reversed, 0);
+    m.recordTrace(reversed, 0);
     auto late = r;
     late.trace_.t[7] = 250;
-    m.record(late, 0);
+    m.recordTrace(late, 0);
     EXPECT_EQ(m.size(), 0U);
-    m.record(r, 0);
+    m.recordTrace(r, 0);
     ASSERT_EQ(m.size(), 1U);
     EXPECT_EQ(m.sample(0).trace.t[0], 110U);
-    m.record(r, 0);
+    m.recordTrace(r, 0);
     EXPECT_EQ(m.overflow(), 1U);
-    m.finish(245);
-    EXPECT_FALSE(m.collecting(245));
-    EXPECT_TRUE(m.collecting(244));
+    m.stopCapture(245);
+    EXPECT_FALSE(m.isWithinCollectionWindow(245));
+    EXPECT_TRUE(m.isWithinCollectionWindow(244));
 }
 
 TEST(PerformanceMeasurement, CancelsNeedOnlySubmissionBoundaries) {
@@ -65,10 +65,10 @@ TEST(PerformanceMeasurement, CancelsNeedOnlySubmissionBoundaries) {
     Exchange::ClientRequest r;
     r.type_ = Exchange::ClientRequestType::CANCEL;
     r.trace_.t = {0,0,0,0,190,210,220,230};
-    m.record(r, 0);
+    m.recordTrace(r, 0);
     EXPECT_EQ(m.size(), 1U);
     r.trace_.t[4] = 200;
-    m.record(r, 0);
+    m.recordTrace(r, 0);
     EXPECT_EQ(m.size(), 1U);
 }
 
@@ -99,7 +99,7 @@ TEST(PerformanceMeasurement, SelectedEvaluationKeepsItsSourceAcrossNewMarketData
         u->ticker_id_ = 0;
         u->depth_snapshot_.bids_[0] = {bid, 2};
         u->depth_snapshot_.asks_[0] = {bid+1, 3};
-        u->trace_ = m.source(Common::nowSteadyNs());
+        u->trace_ = m.createTrace(Common::nowSteadyNs());
         u->trace_.t[1] = Common::nowSteadyNs();
         u->trace_.t[2] = Common::nowSteadyNs();
         h->market_updates.updateWriteIndex();
@@ -124,7 +124,7 @@ TEST(PerformanceMeasurement, SelectedEvaluationKeepsItsSourceAcrossNewMarketData
     u->ticker_id_ = 0;
     u->depth_snapshot_.bids_[0] = {104,2};
     u->depth_snapshot_.asks_[0] = {105,3};
-    u->trace_ = m.source(Common::nowSteadyNs());
+    u->trace_ = m.createTrace(Common::nowSteadyNs());
     h->market_updates.updateWriteIndex();
     h->engine.processPending();
     ASSERT_EQ(h->requests.size(), 1U);

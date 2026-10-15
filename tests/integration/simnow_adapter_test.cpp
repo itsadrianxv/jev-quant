@@ -89,7 +89,7 @@ struct Fake final : Ctp::Transport {
     void stop() noexcept override {}
     void emit(Kind k, Ctp::Payload p = {}, int id = 0, int error = 0, bool last = true) {
         Ctp::Event event{k, id, error, last, std::move(p)};
-        if (k == Kind::Depth && measurement) event.trace = measurement->source(Common::nowSteadyNs());
+        if (k == Kind::Depth && measurement) event.trace = measurement->createTrace(Common::nowSteadyNs());
         (marketSide(k) ? market : trader)(std::move(event));
     }
     CThostFtdcDepthMarketDataField depth() {
@@ -482,7 +482,7 @@ TEST_F(SimNowAdapter, CapturesSuccessfulSubmissionAfterGatewayAndAdapterBoundari
     measurement_ = &measurement;
     measurement.startCapture();
     startAdapter();
-    request_trace_ = measurement.source(Common::nowSteadyNs());
+    request_trace_ = measurement.createTrace(Common::nowSteadyNs());
     request_trace_.evaluation_id = 7;
     for (int i = 1; i < 4; ++i) request_trace_.t[i] = Common::nowSteadyNs();
     send();
@@ -502,7 +502,7 @@ TEST_F(SimNowAdapter, ImmediateCtpFailureDoesNotBecomeAPerformanceSample) {
     measurement.startCapture();
     arrange([](Fake& fake) { fake.reject_insert = true; });
     startAdapter();
-    request_trace_ = measurement.source(Common::nowSteadyNs());
+    request_trace_ = measurement.createTrace(Common::nowSteadyNs());
     request_trace_.evaluation_id = 7;
     for (int i = 1; i < 4; ++i) request_trace_.t[i] = Common::nowSteadyNs();
     send();

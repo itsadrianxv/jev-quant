@@ -47,7 +47,7 @@ class Native final : public Transport {
         void OnRtnDepthMarketData(CThostFtdcDepthMarketDataField* p) override {
             const auto now = owner.config_.measurement ? Common::nowSteadyNs() : 0;
             Event event{Kind::Depth, 0, 0, true, {}};
-            if (owner.config_.measurement) event.trace = owner.config_.measurement->source(now);
+            if (owner.config_.measurement) event.trace = owner.config_.measurement->createTrace(now);
             if (p) event.payload = *p;
             owner.market_sink_(std::move(event));
         }

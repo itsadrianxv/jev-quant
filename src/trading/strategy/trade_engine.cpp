@@ -371,7 +371,7 @@ auto TradeEngine::buildJevEvaluationState(
         pnl_factor = venue_multiplier_ / state.price_scale_;
     }
     state.evaluation_id_ = evaluation_id;
-    if (measurement_ && measurement_->admitting(Common::nowSteadyNs())) {
+    if (measurement_ && measurement_->isWithinAdmissionWindow(Common::nowSteadyNs())) {
         state.trace_ = latest_traces_[ticker_id];
         state.trace_.evaluation_id = evaluation_id;
     }
@@ -417,9 +417,9 @@ auto TradeEngine::sendClientRequest(const Exchange::ClientRequest& request)
     slot->trace_ = {};
     if (measurement_) {
         const auto now = Common::nowSteadyNs();
-        if (request.type_ == Exchange::ClientRequestType::NEW && decision_trace_.source_id && measurement_->collecting(now))
+        if (request.type_ == Exchange::ClientRequestType::NEW && decision_trace_.source_id && measurement_->isWithinCollectionWindow(now))
             slot->trace_ = decision_trace_;
-        if (slot->trace_.source_id || (request.type_ == Exchange::ClientRequestType::CANCEL && measurement_->admitting(now)))
+        if (slot->trace_.source_id || (request.type_ == Exchange::ClientRequestType::CANCEL && measurement_->isWithinAdmissionWindow(now)))
             slot->trace_.t[4] = Common::nowSteadyNs();
     }
     outgoing_requests_->updateWriteIndex();

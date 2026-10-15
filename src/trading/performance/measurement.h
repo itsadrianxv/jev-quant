@@ -23,12 +23,12 @@ public:
     Measurement(std::size_t capacity, std::uint64_t window_ns,
                 std::uint64_t grace_ns, bool callgrind);
     void startCapture(std::uint64_t now = Common::nowSteadyNs());
-    void finish(std::uint64_t now = Common::nowSteadyNs()) noexcept { end_.store(now, std::memory_order_release); }
-    bool admitting(std::uint64_t now) const noexcept;
-    bool collecting(std::uint64_t now) const noexcept;
-    Common::PerformanceTrace source(std::uint64_t now) noexcept;
-    void record(const Exchange::ClientRequest&, int result) noexcept;
-    void write(const std::string& directory, bool healthy,
+    void stopCapture(std::uint64_t now = Common::nowSteadyNs()) noexcept { end_.store(now, std::memory_order_release); }
+    bool isWithinAdmissionWindow(std::uint64_t now) const noexcept;
+    bool isWithinCollectionWindow(std::uint64_t now) const noexcept;
+    Common::PerformanceTrace createTrace(std::uint64_t now) noexcept;
+    void recordTrace(const Exchange::ClientRequest&, int result) noexcept;
+    void exportTrace(const std::string& directory, bool healthy,
                std::uint64_t provider_failures) const;
     bool callgrind() const noexcept { return callgrind_; }
     std::size_t size() const noexcept { return size_; }

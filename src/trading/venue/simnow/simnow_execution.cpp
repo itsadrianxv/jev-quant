@@ -88,7 +88,7 @@ void SimNowExecution::cancel(Order& o, const Exchange::ClientRequest* observed) 
     p.OrderActionRef=++next_id; o.cancel_id=next_id; o.cancel_sent=true;
     auto request = observed ? *observed : Exchange::ClientRequest{};
     const auto rc=transport->cancelObserved(p,next_id,request.trace_);
-    if (config.measurement && observed) config.measurement->record(request,rc);
+    if (config.measurement && observed) config.measurement->recordTrace(request,rc);
     if(rc!=0) { publish(o,Exchange::ClientResponseType::CANCEL_REJECTED); fail("Cancellation not submitted; order remains unresolved"); }
 }
 
@@ -125,7 +125,7 @@ void SimNowExecution::submit(const Exchange::ClientRequest& r) {
     auto& stored=orders.emplace(ref,std::move(o)).first->second;
     auto observed = r;
     const auto rc=transport->insertObserved(p,next_id,observed.trace_);
-    if (config.measurement) config.measurement->record(observed,rc);
+    if (config.measurement) config.measurement->recordTrace(observed,rc);
     if(rc!=0) { publish(stored,Exchange::ClientResponseType::REJECTED); stored.done=true; }
 }
 

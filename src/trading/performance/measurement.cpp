@@ -9,6 +9,7 @@
 #endif
 
 namespace Trading {
+// Preallocate sample storage and validate capture limits and Callgrind availability.
 Measurement::Measurement(std::size_t capacity, std::uint64_t window_ns,
                          std::uint64_t grace_ns, bool callgrind)
     : samples_(capacity), window_ns_(window_ns), grace_ns_(grace_ns), callgrind_(callgrind) {
@@ -22,40 +23,46 @@ Measurement::Measurement(std::size_t capacity, std::uint64_t window_ns,
         throw std::runtime_error("Callgrind capture must run under Valgrind; use run_simnow.py");
 #endif
 }
+// Set the capture start time once; reject zero timestamps and repeated starts.
 void Measurement::startCapture(std::uint64_t now) {
     std::uint64_t expected = 0;
     if (!now || !start_.compare_exchange_strong(expected, now))
         throw std::logic_error("Performance capture can only be armed once");
 }
-bool Measurement::admitting(std::uint64_t now) const noexcept {
+// Check whether the timestamp falls within the new-sample window and before any explicit stop.
+bool Measurement::isWithinAdmissionWindow(std::uint64_t now) const noexcept {
     const auto start = start_.load(std::memory_order_acquire);
     const auto end = end_.load(std::memory_order_acquire);
     return start && (!end || now < end) && now >= start && now - start < window_ns_;
 }
-bool Measurement::collecting(std::uint64_t now) const noexcept {
+// Check whether the timestamp falls within the capture window plus grace period and before any explicit stop.
+bool Measurement::isWithinCollectionWindow(std::uint64_t now) const noexcept {
     const auto start = start_.load(std::memory_order_acquire);
     const auto end = end_.load(std::memory_order_acquire);
     return start && (!end || now < end) && now >= start && now - start < window_ns_ + grace_ns_;
 }
-Common::PerformanceTrace Measurement::source(std::uint64_t now) noexcept {
+// Assign t1 and a source ID to an admitted market event, or return an empty trace.
+Common::PerformanceTrace Measurement::createTrace(std::uint64_t now) noexcept {
     Common::PerformanceTrace trace;
-    if (admitting(now)) { trace.t[0] = now; trace.source_id = ++next_source_; }
+    if (isWithinAdmissionWindow(now)) { trace.t[0] = now; trace.source_id = ++next_source_; }
     return trace;
 }
-void Measurement::record(const Exchange::ClientRequest& request, int result) noexcept {
+// Validate and store a successful submission's trace, counting overflow when storage is full.
+void Measurement::recordTrace(const Exchange::ClientRequest& request, int result) noexcept {
     const auto& trace = request.trace_;
-    if (result || !collecting(trace.t[7])) return;
+    if (result || !isWithinCollectionWindow(trace.t[7])) return;
     const bool cancel = request.type_ == Exchange::ClientRequestType::CANCEL;
     if (!cancel && (request.type_ != Exchange::ClientRequestType::NEW ||
-                    !trace.source_id || !trace.evaluation_id || !admitting(trace.t[0]))) return;
+                    !trace.source_id || !trace.evaluation_id || !isWithinAdmissionWindow(trace.t[0]))) return;
     const std::size_t first = cancel ? 4 : 0;
-    if (cancel && !admitting(trace.t[4])) return;
+    if (cancel && !isWithinAdmissionWindow(trace.t[4])) return;
     for (std::size_t i = first; i < 8; ++i)
         if (!trace.t[i] || (i > first && trace.t[i] < trace.t[i-1])) return;
     if (size_ == samples_.size()) { ++overflow_; return; }
     samples_[size_++] = {trace, request.order_id_, request.ticker_id_, request.type_, request.offset_};
 }
-void Measurement::write(const std::string& directory, bool healthy, std::uint64_t failures) const {
+// Export samples and capture metadata after workers join, refusing to overwrite existing output files.
+void Measurement::exportTrace(const std::string& directory, bool healthy, std::uint64_t failures) const {
     namespace fs = std::filesystem;
     fs::create_directories(directory);
     const auto csv_path = fs::path(directory) / "samples.csv";
@@ -92,13 +99,15 @@ void Measurement::write(const std::string& directory, bool healthy, std::uint64_
     out << meta.dump(2) << '\n';
     out.close();
 }
+// Count the engine event and enable scoped Callgrind collection when capture settings allow it.
 InstructionScope::InstructionScope(Measurement* m, bool decision)
-    : enabled_(m && m->callgrind() && m->admitting(Common::nowSteadyNs())) {
+    : enabled_(m && m->callgrind() && m->isWithinAdmissionWindow(Common::nowSteadyNs())) {
     if (enabled_) m->countProfile(decision);
 #ifdef JEV_HAVE_CALLGRIND
     if (enabled_) { CALLGRIND_TOGGLE_COLLECT; }
 #endif
 }
+// Restore Callgrind collection state when leaving a scope that enabled it.
 InstructionScope::~InstructionScope() {
 #ifdef JEV_HAVE_CALLGRIND
     if (enabled_) { CALLGRIND_TOGGLE_COLLECT; }
