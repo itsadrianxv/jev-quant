@@ -461,7 +461,7 @@ class SimNowAdapter : public ::testing::Test {
 };
 
 TEST_F(SimNowAdapter, PreservesCallbackSourceAcrossMarketWorkerPublication) {
-    Measurement measurement(8, 60000000000ULL, 60000000000ULL, false);
+    Measurement measurement(8, 60000000000ULL, 60000000000ULL);
     measurement_ = &measurement;
     measurement.startCapture();
     startAdapter();
@@ -478,7 +478,7 @@ TEST_F(SimNowAdapter, PreservesCallbackSourceAcrossMarketWorkerPublication) {
 }
 
 TEST_F(SimNowAdapter, CapturesSuccessfulSubmissionAfterGatewayAndAdapterBoundaries) {
-    Measurement measurement(8, 60000000000ULL, 60000000000ULL, false);
+    Measurement measurement(8, 60000000000ULL, 60000000000ULL);
     measurement_ = &measurement;
     measurement.startCapture();
     startAdapter();
@@ -497,7 +497,7 @@ TEST_F(SimNowAdapter, CapturesSuccessfulSubmissionAfterGatewayAndAdapterBoundari
 }
 
 TEST_F(SimNowAdapter, ImmediateCtpFailureDoesNotBecomeAPerformanceSample) {
-    Measurement measurement(8, 60000000000ULL, 60000000000ULL, false);
+    Measurement measurement(8, 60000000000ULL, 60000000000ULL);
     measurement_ = &measurement;
     measurement.startCapture();
     arrange([](Fake& fake) { fake.reject_insert = true; });

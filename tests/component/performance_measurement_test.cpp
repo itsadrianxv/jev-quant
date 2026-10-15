@@ -8,7 +8,7 @@
 
 namespace {
 TEST(PerformanceMeasurement, ShutdownTimeDeterminesCompletionNotDelayedExport) {
-    Trading::Measurement m(1, 100, 50, false);
+    Trading::Measurement m(1, 100, 50);
     m.startCapture(100);
     m.stopCapture(200);
     const auto directory = std::filesystem::temp_directory_path() /
@@ -23,7 +23,7 @@ TEST(PerformanceMeasurement, ShutdownTimeDeterminesCompletionNotDelayedExport) {
 }
 
 TEST(PerformanceMeasurement, BoundsAdmissionGraceSuccessAndOverflow) {
-    Trading::Measurement m(1, 100, 50, false);
+    Trading::Measurement m(1, 100, 50);
     EXPECT_EQ(m.createTrace(100).source_id, 0U);
     m.startCapture(100);
     EXPECT_THROW(m.startCapture(101), std::logic_error);
@@ -60,7 +60,7 @@ TEST(PerformanceMeasurement, BoundsAdmissionGraceSuccessAndOverflow) {
 }
 
 TEST(PerformanceMeasurement, CancelsNeedOnlySubmissionBoundaries) {
-    Trading::Measurement m(2, 100, 50, false);
+    Trading::Measurement m(2, 100, 50);
     m.startCapture(100);
     Exchange::ClientRequest r;
     r.type_ = Exchange::ClientRequestType::CANCEL;
@@ -88,7 +88,7 @@ public:
 };
 
 TEST(PerformanceMeasurement, SelectedEvaluationKeepsItsSourceAcrossNewMarketData) {
-    Trading::Measurement m(8, 60000000000ULL, 60000000000ULL, false);
+    Trading::Measurement m(8, 60000000000ULL, 60000000000ULL);
     m.startCapture();
     auto h = Tests::makeHarness(Tests::EngineHarness::defaultLimits());
     h->engine.setMeasurement(&m);

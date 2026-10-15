@@ -4,24 +4,15 @@
 #include <limits>
 #include <stdexcept>
 #include <nlohmann/json.hpp>
-#ifdef JEV_HAVE_CALLGRIND
-#include <valgrind/callgrind.h>
-#endif
 
 namespace Trading {
-// Preallocate sample storage and validate capture limits and Callgrind availability.
+// Preallocate sample storage and validate capture limits.
 Measurement::Measurement(std::size_t capacity, std::uint64_t window_ns,
-                         std::uint64_t grace_ns, bool callgrind)
-    : samples_(capacity), window_ns_(window_ns), grace_ns_(grace_ns), callgrind_(callgrind) {
+                         std::uint64_t grace_ns)
+    : samples_(capacity), window_ns_(window_ns), grace_ns_(grace_ns) {
     if (!capacity || !window_ns || !grace_ns ||
         window_ns > std::numeric_limits<std::uint64_t>::max() - grace_ns)
         throw std::invalid_argument("Invalid performance capture bounds");
-#ifndef JEV_HAVE_CALLGRIND
-    if (callgrind) throw std::runtime_error("Rebuild with Valgrind development headers for Callgrind capture");
-#else
-    if (callgrind && !RUNNING_ON_VALGRIND)
-        throw std::runtime_error("Callgrind capture must run under Valgrind; use run_simnow.py");
-#endif
 }
 // Set the capture start time once; reject zero timestamps and repeated starts.
 void Measurement::startCapture(std::uint64_t now) {
@@ -86,31 +77,16 @@ void Measurement::exportTrace(const std::string& directory, bool healthy, std::u
     const auto start = start_.load();
     const auto end = end_.load();
     const auto completed_at = end ? end : now;
-    nlohmann::json meta{{"schema", 1}, {"mode", callgrind_ ? "callgrind" : "native"},
+    nlohmann::json meta{{"schema", 1},
         {"clock", "steady_clock_nanoseconds"}, {"start_ns", start}, {"end_ns", end}, {"export_ns", now},
         {"window_ns", window_ns_}, {"grace_ns", grace_ns_}, {"capacity", samples_.size()},
         {"samples", size_}, {"new_samples", new_count}, {"overflow", overflow_},
         {"healthy", healthy}, {"provider_failures", failures},
-        {"profile_market_events", profile_markets_}, {"profile_decision_events", profile_decisions_},
         {"window_completed", start && completed_at >= start && completed_at-start >= window_ns_+grace_ns_},
         {"live_acceptance", "pending_manual_evidence_review"}};
     std::ofstream out(meta_path);
     out.exceptions(std::ios::badbit | std::ios::failbit);
     out << meta.dump(2) << '\n';
     out.close();
-}
-// Count the engine event and enable scoped Callgrind collection when capture settings allow it.
-InstructionScope::InstructionScope(Measurement* m, bool decision)
-    : enabled_(m && m->callgrind() && m->isWithinAdmissionWindow(Common::nowSteadyNs())) {
-    if (enabled_) m->countProfile(decision);
-#ifdef JEV_HAVE_CALLGRIND
-    if (enabled_) { CALLGRIND_TOGGLE_COLLECT; }
-#endif
-}
-// Restore Callgrind collection state when leaving a scope that enabled it.
-InstructionScope::~InstructionScope() {
-#ifdef JEV_HAVE_CALLGRIND
-    if (enabled_) { CALLGRIND_TOGGLE_COLLECT; }
-#endif
 }
 }

@@ -146,7 +146,7 @@ auto TradeEngine::processMarketUpdates() -> bool {
         if (latest_traces_[update->ticker_id_].source_id)
             latest_traces_[update->ticker_id_].t[3] = received_ns;
         {
-            InstructionScope scope(measurement_);
+            auto scope = profiler_ ? profiler_->collectMarket() : CallgrindProfiler::Scope(false);
             book.onMarketUpdate(*update);
             handleMarketUpdate(*update, book);
         }
@@ -170,7 +170,7 @@ auto TradeEngine::processJevDecisions() -> bool {
         }
         decision_trace_ = decision->trace_;
         {
-            InstructionScope scope(measurement_, true);
+            auto scope = profiler_ ? profiler_->collectDecision() : CallgrindProfiler::Scope(false);
             handleJevDecision(*decision);
         }
         decision_trace_ = {};

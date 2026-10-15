@@ -26,6 +26,7 @@
 #include "position_keeper.h"
 #include "risk_manager.h"
 #include "trading/performance/measurement.h"
+#include "trading/performance/callgrind_profiler.h"
 
 namespace Trading {
 
@@ -67,6 +68,7 @@ class TradeEngine final {
 
     // Install before start; measurement must outlive all workers.
     void setMeasurement(Measurement* measurement) noexcept { measurement_ = measurement; }
+    void setCallgrindProfiler(CallgrindProfiler* profiler) noexcept { profiler_ = profiler; }
 
     /// Send a request to the OrderGateway queue.
     auto sendClientRequest(const Exchange::ClientRequest& request) -> void;
@@ -161,6 +163,7 @@ class TradeEngine final {
             -> void;
 
     Measurement* measurement_ = nullptr;
+    CallgrindProfiler* profiler_ = nullptr;
     std::array<Common::PerformanceTrace, Common::ME_MAX_TICKERS> latest_traces_{};
     Common::PerformanceTrace decision_trace_{};
 

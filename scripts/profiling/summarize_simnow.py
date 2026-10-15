@@ -10,7 +10,8 @@ from pathlib import Path
 def summarize(directory):
     directory = Path(directory)
     meta = json.loads((directory / 'capture.json').read_text())
-    if meta['mode'] != 'native':
+    run_manifest = directory / 'run.json'
+    if run_manifest.exists() and json.loads(run_manifest.read_text()).get('mode') == 'callgrind':
         raise ValueError('Callgrind timing is not native latency; inspect instruction profiles instead')
     if not meta['healthy'] or meta['overflow'] or not meta['window_completed']:
         raise ValueError('Capture failed, overflowed, or ended before the grace deadline')

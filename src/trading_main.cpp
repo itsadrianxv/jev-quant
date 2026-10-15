@@ -20,6 +20,7 @@
 #include "trading/strategy/jev_http_client.h"
 #include "trading/strategy/jev_worker.h"
 #include "trading/strategy/trade_engine.h"
+#include "trading/performance/callgrind_profiler.h"
 #include "trading/venue/binance/binance_um_futures_adapter.h"
 #ifdef JEV_ENABLE_SIMNOW
 #include "trading/venue/simnow/simnow_venue_adapter.h"
@@ -70,6 +71,7 @@ int main(int argc, char** argv) {
         const auto run_seconds = runtime.value("run_seconds", 0);
         const auto perf = document.value("performance", nlohmann::json::object());
         std::unique_ptr<Trading::Measurement> measurement;
+        std::unique_ptr<Trading::CallgrindProfiler> profiler;
         const auto perf_directory = perf.value("output_directory", std::string("performance-run"));
         if (perf.value("enabled", false)) {
             if (!simnow) throw std::runtime_error("Performance capture requires SimNow");
@@ -81,7 +83,8 @@ int main(int argc, char** argv) {
             const auto mode = perf.value("mode", std::string("native"));
             if (mode != "native" && mode != "callgrind") throw std::runtime_error("Unknown performance mode");
             measurement = std::make_unique<Trading::Measurement>(capacity, seconds*1000000000ULL,
-                grace*1000000000ULL, mode == "callgrind");
+                grace*1000000000ULL);
+            if (mode == "callgrind") profiler = std::make_unique<Trading::CallgrindProfiler>(seconds*1000000000ULL);
         }
 
         if (ticker_id >= Common::ME_MAX_TICKERS || queue_capacity == 0 ||
@@ -114,6 +117,7 @@ int main(int argc, char** argv) {
                 &market_updates, &decisions,
                 logger.registerProducer("TradeEngine", "trade-engine-" + std::to_string(client_id) + ".log"));
         engine.setMeasurement(measurement.get());
+        engine.setCallgrindProfiler(profiler.get());
 
         engine.setDecisionOrderQuantity(order_qty);
         engine.setVerboseMarketData(verbose_market_data);
@@ -201,6 +205,7 @@ int main(int argc, char** argv) {
             engine.stop();
             jev_worker.stop();
             logger.stop();
+            if (profiler) profiler->stopCapture();
         };
         const auto startup = [&] {
             logger.start();
@@ -215,7 +220,9 @@ int main(int argc, char** argv) {
             std::clog << "Starting order gateway\n";
             order_gateway.start();
             venue->waitUntilReady();
-            if (measurement) measurement->startCapture();
+            const auto capture_start = Common::nowSteadyNs();
+            if (measurement) measurement->startCapture(capture_start);
+            if (profiler) profiler->startCapture(capture_start);
             std::clog << venue_type << " venue adapter connected\n";
             std::clog << "jev_trading running\n";
         };

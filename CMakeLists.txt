@@ -14,6 +14,7 @@ target_link_libraries(jev_domain INTERFACE jev_common)
 
 add_library(jev_trading_core STATIC
         src/trading/performance/measurement.cpp
+        src/trading/performance/callgrind_profiler.cpp
         src/trading/market_data/market_data_consumer.cpp
         src/trading/order_gw/order_gateway.cpp
         src/trading/strategy/jev_worker.cpp

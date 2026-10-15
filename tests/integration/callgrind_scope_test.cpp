@@ -1,4 +1,4 @@
-#include "trading/performance/measurement.h"
+#include "trading/performance/callgrind_profiler.h"
 #include <atomic>
 #include <thread>
 
@@ -15,8 +15,8 @@ __attribute__((noinline)) void includedMarker() {
     (void)value;
 }
 int main() {
-    Trading::Measurement measurement(1, 60000000000ULL, 1000000000ULL, true);
-    measurement.startCapture();
+    Trading::CallgrindProfiler profiler(60000000000ULL);
+    profiler.startCapture();
     std::atomic<bool> enabled{false}, done{false};
     std::jthread background([&] {
         while (!enabled.load()) std::this_thread::yield();
@@ -24,7 +24,7 @@ int main() {
         done.store(true);
     });
     {
-        Trading::InstructionScope scope(&measurement);
+        auto scope = profiler.collectMarket();
         enabled.store(true);
         while (!done.load()) std::this_thread::yield();
         includedMarker();
