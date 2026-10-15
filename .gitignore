@@ -15,5 +15,4 @@ logs
 /flows/
 /config.simnow.local.json
 .sync
-results/
 __pycache__/
