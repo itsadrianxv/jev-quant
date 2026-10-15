@@ -1,0 +1,154 @@
+{
+  "unit": "ns",
+  "population": "complete submissions with immediate CTP return code zero",
+  "groups": {
+    "NEW/OPEN": {
+      "t2-t1": {
+        "n": 1,
+        "min": 4461,
+        "max": 4461,
+        "p50": 4461,
+        "p95": 4461,
+        "p99": 4461,
+        "tail_sample_warning": true
+      },
+      "t3-t2": {
+        "n": 1,
+        "min": 7789,
+        "max": 7789,
+        "p50": 7789,
+        "p95": 7789,
+        "p99": 7789,
+        "tail_sample_warning": true
+      },
+      "t4-t3": {
+        "n": 1,
+        "min": 250,
+        "max": 250,
+        "p50": 250,
+        "p95": 250,
+        "p99": 250,
+        "tail_sample_warning": true
+      },
+      "t5-t4": {
+        "n": 1,
+        "min": 2893879270,
+        "max": 2893879270,
+        "p50": 2893879270,
+        "p95": 2893879270,
+        "p99": 2893879270,
+        "tail_sample_warning": true
+      },
+      "t6-t5": {
+        "n": 1,
+        "min": 271,
+        "max": 271,
+        "p50": 271,
+        "p95": 271,
+        "p99": 271,
+        "tail_sample_warning": true
+      },
+      "t7-t6": {
+        "n": 1,
+        "min": 1206,
+        "max": 1206,
+        "p50": 1206,
+        "p95": 1206,
+        "p99": 1206,
+        "tail_sample_warning": true
+      },
+      "t8-t7": {
+        "n": 1,
+        "min": 8112,
+        "max": 8112,
+        "p50": 8112,
+        "p95": 8112,
+        "p99": 8112,
+        "tail_sample_warning": true
+      },
+      "t8-t1": {
+        "n": 1,
+        "min": 2893901359,
+        "max": 2893901359,
+        "p50": 2893901359,
+        "p95": 2893901359,
+        "p99": 2893901359,
+        "tail_sample_warning": true
+      }
+    },
+    "NEW/CLOSE_TODAY": {
+      "t2-t1": {
+        "n": 1,
+        "min": 3889,
+        "max": 3889,
+        "p50": 3889,
+        "p95": 3889,
+        "p99": 3889,
+        "tail_sample_warning": true
+      },
+      "t3-t2": {
+        "n": 1,
+        "min": 5117,
+        "max": 5117,
+        "p50": 5117,
+        "p95": 5117,
+        "p99": 5117,
+        "tail_sample_warning": true
+      },
+      "t4-t3": {
+        "n": 1,
+        "min": 291,
+        "max": 291,
+        "p50": 291,
+        "p95": 291,
+        "p99": 291,
+        "tail_sample_warning": true
+      },
+      "t5-t4": {
+        "n": 1,
+        "min": 2214881301,
+        "max": 2214881301,
+        "p50": 2214881301,
+        "p95": 2214881301,
+        "p99": 2214881301,
+        "tail_sample_warning": true
+      },
+      "t6-t5": {
+        "n": 1,
+        "min": 635,
+        "max": 635,
+        "p50": 635,
+        "p95": 635,
+        "p99": 635,
+        "tail_sample_warning": true
+      },
+      "t7-t6": {
+        "n": 1,
+        "min": 832,
+        "max": 832,
+        "p50": 832,
+        "p95": 832,
+        "p99": 832,
+        "tail_sample_warning": true
+      },
+      "t8-t7": {
+        "n": 1,
+        "min": 7686,
+        "max": 7686,
+        "p50": 7686,
+        "p95": 7686,
+        "p99": 7686,
+        "tail_sample_warning": true
+      },
+      "t8-t1": {
+        "n": 1,
+        "min": 2214899751,
+        "max": 2214899751,
+        "p50": 2214899751,
+        "p95": 2214899751,
+        "p99": 2214899751,
+        "tail_sample_warning": true
+      }
+    }
+  }
+}
