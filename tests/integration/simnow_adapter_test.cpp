@@ -62,6 +62,7 @@ struct Fake final : Ctp::Transport {
     bool dirty = false, working = false, reject_insert = false, cancel_fill = false,
          no_cancel = false;
     bool no_instrument = false, query_throttle = false, flood = false;
+    bool trailing_option = false;
     int market_login_id = -1;
     const char* market_day = "20260928";
     std::function<void()> before_insert;
@@ -134,7 +135,12 @@ struct Fake final : Ctp::Transport {
             p.IsTrading = 1;
             p.MinLimitOrderVolume = 1;
             p.MaxLimitOrderVolume = 100;
-            emit(k, p, id);
+            emit(k, p, id, 0, !trailing_option);
+            if (trailing_option) {
+                text(p.InstrumentID, "au2612P800");
+                p.ProductClass = THOST_FTDC_PC_Options;
+                emit(k, p, id);
+            }
             break;
         }
         case Kind::Account: {
@@ -662,6 +668,13 @@ TEST_F(SimNowAdapter, RefusesToStartWhenTheInstrumentIsMissing) {
 
     EXPECT_TRUE(adapter_->failed());
     EXPECT_FALSE(ready_.load());
+}
+
+TEST_F(SimNowAdapter, StartsWhenTheInstrumentQueryEndsWithAnUnrelatedOption) {
+    arrange([](Fake& fake) { fake.trailing_option = true; });
+    ASSERT_NO_THROW(startAdapter());
+    EXPECT_TRUE(ready_.load());
+    EXPECT_FALSE(adapter_->failed());
 }
 
 TEST_F(SimNowAdapter, RetriesAStartupQueryAfterAThrottleRejection) {

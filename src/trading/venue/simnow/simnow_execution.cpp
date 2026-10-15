@@ -224,8 +224,9 @@ void SimNowExecution::event(const Ctp::Event& e) {
         return;
     }
     if(e.request_id!=query_id || e.kind!=query_kind || !query_id) return;
-    if(auto p=std::get_if<CThostFtdcInstrumentField>(&e.payload)) {
-        if(config.instrument!=p->InstrumentID || std::string(p->ExchangeID)!="SHFE" ||
+    if(auto p=std::get_if<CThostFtdcInstrumentField>(&e.payload);
+       p && config.instrument==p->InstrumentID) {
+        if(std::string(p->ExchangeID)!="SHFE" ||
            p->ProductClass!=THOST_FTDC_PC_Futures || !p->IsTrading || p->VolumeMultiple<=0 ||
            Ctp::price(p->PriceTick)==Common::Price_INVALID || p->MinLimitOrderVolume>1 || p->MaxLimitOrderVolume<1)
             throw std::runtime_error("Configured instrument is not an eligible SHFE futures contract");
