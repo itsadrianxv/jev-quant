@@ -30,6 +30,7 @@
 #include "exchange/order_server/client_request.h"
 #include "exchange/order_server/client_response.h"
 #include "trading/strategy/jev_capture.h"
+#include "trading/strategy/jev_config.h"
 #include "trading/strategy/jev_decision.h"
 #include "trading/strategy/jev_http_client.h"
 #include "trading/strategy/trade_engine.h"
@@ -133,6 +134,21 @@ auto readWholeFile(const std::filesystem::path& path) -> std::string {
     std::ifstream file(path, std::ios::binary);
     return std::string((std::istreambuf_iterator<char>(file)),
                        std::istreambuf_iterator<char>());
+}
+
+TEST(JevConfigTest, CycleTestingIsOptInAndRestrictedToSimNow) {
+    const auto directory = tempDir("jev_quant_cycle_config");
+    std::filesystem::create_directories(directory);
+    const auto dotenv = directory / ".env";
+    const auto config = directory / "config.json";
+    std::ofstream(dotenv) << "OPENROUTER_API_KEY=offline-test\n";
+    std::ofstream(config) << R"({"venue":{"type":"binance"}})";
+    EXPECT_FALSE(Trading::loadJevHttpConfig(dotenv.string(), config.string()).simnow_cycle_test_);
+    std::ofstream(config) << R"({"venue":{"type":"simnow"},"jev":{"simnow_cycle_test":true}})";
+    EXPECT_TRUE(Trading::loadJevHttpConfig(dotenv.string(), config.string()).simnow_cycle_test_);
+    std::ofstream(config) << R"({"venue":{"type":"binance"},"jev":{"simnow_cycle_test":true}})";
+    EXPECT_THROW(Trading::loadJevHttpConfig(dotenv.string(), config.string()), std::runtime_error);
+    std::filesystem::remove_all(directory);
 }
 
 auto fileState(const std::filesystem::path& path) -> std::string {

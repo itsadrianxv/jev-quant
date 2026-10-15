@@ -18,6 +18,7 @@ struct JevHttpConfig {
     std::string http_referer_;
     std::string http_title_;
     JevCaptureConfig capture_;
+    bool simnow_cycle_test_ = false;
 };
 
 /// C++ HTTP DecisionProvider for Jev through OpenRouter's Decisions API.

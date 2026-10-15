@@ -162,6 +162,9 @@ if(Python3_FOUND)
     add_test(NAME performance_summary_contract
         COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/performance_summary_test.py")
     set_tests_properties(performance_summary_contract PROPERTIES LABELS integration)
+    add_test(NAME simnow_cycle_summary_contract
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/simnow_cycle_test.py")
+    set_tests_properties(simnow_cycle_summary_contract PROPERTIES LABELS integration)
 endif()
 
 # GoogleTest backs the layered test tree (unit, component, integration). The

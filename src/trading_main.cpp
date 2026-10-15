@@ -238,6 +238,12 @@ int main(int argc, char** argv) {
             measurement->write(perf_directory, !venue->failed(), jev_worker.failureCount());
         }
         if (venue->failed()) return 1;
+        if (simnow) {
+            std::clog << "event=simnow_live_result market_ready=" << market_ready.load()
+                      << " decisions=" << valid_decisions.load() << " executions=" << executions.load()
+                      << " provider_failures=" << jev_worker.failureCount()
+                      << " final_position=" << engine.positionKeeper().getPositionInfo(ticker_id).position_ << '\n';
+        }
         if (simex) {
             std::clog << "event=simex_live_result market_ready=" << market_ready.load()
                       << " decisions=" << valid_decisions.load() << " executions=" << executions.load()

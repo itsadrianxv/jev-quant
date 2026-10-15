@@ -149,4 +149,24 @@ TEST(JevHttpRequestBodyTest, DeadWorkingOrdersAreOmitted) {
     EXPECT_TRUE(orders.empty());
 }
 
+TEST(JevHttpRequestBodyTest, CycleTestChangesOnlyQuestionsAndKeepsHoldAvailable) {
+    auto state = makeState();
+    Trading::JevHttpConfig config;
+    config.simnow_cycle_test_ = true;
+    const Trading::JevHttpClient client(config);
+    for (const auto position : {0, -1, 1}) {
+        state.position_.net_position_ = position;
+        const auto normal = buildRequest(state);
+        const auto cycle = Json::parse(client.buildRequestBody(state));
+        EXPECT_EQ(normal.at("state"), cycle.at("state"));
+        EXPECT_EQ(normal.at("model"), cycle.at("model"));
+        const auto& intent = cycle.at("questions").at("intent");
+        EXPECT_TRUE(intent.at("criteria").contains("hold"));
+        EXPECT_EQ(position != 0, intent.at("criteria").contains("close"));
+        EXPECT_NE(normal.at("questions").at("intent"), intent);
+        EXPECT_NE(std::string::npos, intent.at("instructions").get<std::string>().find("SimNow"));
+        EXPECT_EQ(std::string::npos, intent.at("instructions").get<std::string>().find("1–5 minute"));
+    }
+}
+
 }  // namespace

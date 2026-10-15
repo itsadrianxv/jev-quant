@@ -63,6 +63,11 @@ auto loadJevHttpConfig(const std::string& dotenv_path,
     if (settings.contains("max_retries")) config.max_retries_ = settings.at("max_retries").get<unsigned>();
     if (settings.contains("http_referer")) config.http_referer_ = settings.at("http_referer").get<std::string>();
     if (settings.contains("http_title")) config.http_title_ = settings.at("http_title").get<std::string>();
+    config.simnow_cycle_test_ = settings.value("simnow_cycle_test", false);
+    if (config.simnow_cycle_test_ &&
+        document.value("venue", nlohmann::json::object()).value("type", std::string{}) != "simnow") {
+        throw std::runtime_error("Jev cycle testing requires the SimNow venue");
+    }
     if (settings.contains("capture")) {
         const auto& capture = settings.at("capture");
         if (!capture.is_object()) throw std::runtime_error("config.jev.capture must be an object");

@@ -103,13 +103,43 @@ auto JevHttpClient::buildRequestBody(const JevEvaluationState& state) const
     if (state.pnl_before_fees_) {
         state_json["position"]["pnl_basis"] = "CNY, before fees, measured from this process's entry prices";
     }
-    const Json request = {
+    Json request = {
             {"model", config_.model_}, {"state", state_json},
             {"questions", {
                     {"bias", {{"type", "choice"}, {"instructions", "Choose the directional bias better supported by the available information for seeking short-term profit over a 1–5 minute horizon. A directional preference does not by itself justify opening a position."},
                                         {"criteria", {{"long", "long"}, {"short", "short"}}}}},
                     {"intent", {{"type", "choice"}, {"instructions", "Prioritize active trading to pursue short-term profit over a 1–5 minute holding horizon, within the stated risk limits. Strongly prefer open or close whenever either action is reasonably supported by the available information. When flat, favor opening in the selected direction on modest evidence. When holding a position, favor adding exposure when the opportunity remains favorable, or reducing exposure when exiting is preferable, including at a loss. When trading and holding appear similarly attractive, choose the supported trading action. Reserve hold for cases where the bid–ask spread outweighs the expected opportunity, risk limits prevent trading, or the available information provides no reasonable basis for action. Treat the holding horizon as a planning target, not a mandatory exit deadline."},
                                             {"criteria", criteria}}}}}};
+    if (config_.simnow_cycle_test_) {
+        auto& questions = request["questions"];
+        questions["bias"]["instructions"] =
+                "This is a SimNow trading-chain test. Choose long or short using the current market information. "
+                "A strong directional edge is not required for a one-contract test trade. "
+                "When closing, use the direction of the existing position.";
+        questions["intent"]["instructions"] =
+                "This is a SimNow trading-chain test, not a profitability experiment. "
+                "Prioritize completing repeated one-contract open-fill-close-fill cycles over profit. "
+                "Aim for at least 20 complete cycles and 40 fills in 10 minutes, with a final flat position. "
+                "When flat with no working orders, strongly prefer open even without a profit edge. "
+                "When holding one contract with no working orders, strongly prefer close on a subsequent evaluation, "
+                "targeting about 5-15 seconds of holding. Closing at a loss and paying the spread are acceptable. "
+                "Do not add exposure to an existing position. Wait for working orders to finish before another action. "
+                "Respect the stated risk limits, account constraints, and market validity. A max_loss of zero "
+                "means the monetary loss stop is disabled, not that losing test trades are forbidden. "
+                "You still choose each action; hold remains available when trading is unsuitable. "
+                "Frequency and holding duration are targets, not mandatory actions. "
+                "The state contains no elapsed holding time or session countdown; do not invent either.";
+        questions["intent"]["criteria"]["open"] = position.net_position_ == 0
+                ? "Open one contract to start the next test cycle"
+                : "Do not increase exposure during this one-contract test";
+        if (position.net_position_ != 0) {
+            questions["intent"]["criteria"]["close"] =
+                    "Close the existing contract to complete the test cycle, including at a loss";
+        }
+        questions["intent"]["criteria"]["hold"] =
+                "Wait when working orders, invalid market data, or account/risk constraints make trading unsuitable";
+        // TODO(cycle-test): Add elapsed holding/session time if prompt-only runs miss the targets.
+    }
     return request.dump();
 }
 
