@@ -1,9 +1,9 @@
 {
   "venue": {
     "type": "simnow",
-    "trading_front": "tcp://182.254.243.31:40001",
-    "market_front": "tcp://182.254.243.31:40011",
-    "instrument": "REPLACE_WITH_ACTIVE_SHFE_CONTRACT",
+    "trading_front": "tcp://182.254.243.31:30001",
+    "market_front": "tcp://182.254.243.31:30011",
+    "instrument": "rb2611",
     "flow_directory": "flows/simnow",
     "startup_timeout_ms": 60000,
     "shutdown_timeout_ms": 10000
