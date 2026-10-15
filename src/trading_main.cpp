@@ -215,7 +215,7 @@ int main(int argc, char** argv) {
             std::clog << "Starting order gateway\n";
             order_gateway.start();
             venue->waitUntilReady();
-            if (measurement) measurement->arm();
+            if (measurement) measurement->startCapture();
             std::clog << venue_type << " venue adapter connected\n";
             std::clog << "jev_trading running\n";
         };

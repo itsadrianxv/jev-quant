@@ -22,7 +22,7 @@ Measurement::Measurement(std::size_t capacity, std::uint64_t window_ns,
         throw std::runtime_error("Callgrind capture must run under Valgrind; use run_simnow.py");
 #endif
 }
-void Measurement::arm(std::uint64_t now) {
+void Measurement::startCapture(std::uint64_t now) {
     std::uint64_t expected = 0;
     if (!now || !start_.compare_exchange_strong(expected, now))
         throw std::logic_error("Performance capture can only be armed once");

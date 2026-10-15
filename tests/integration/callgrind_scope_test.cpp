@@ -16,7 +16,7 @@ __attribute__((noinline)) void includedMarker() {
 }
 int main() {
     Trading::Measurement measurement(1, 60000000000ULL, 1000000000ULL, true);
-    measurement.arm();
+    measurement.startCapture();
     std::atomic<bool> enabled{false}, done{false};
     std::jthread background([&] {
         while (!enabled.load()) std::this_thread::yield();

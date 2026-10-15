@@ -22,7 +22,7 @@ public:
     };
     Measurement(std::size_t capacity, std::uint64_t window_ns,
                 std::uint64_t grace_ns, bool callgrind);
-    void arm(std::uint64_t now = Common::nowSteadyNs());
+    void startCapture(std::uint64_t now = Common::nowSteadyNs());
     void finish(std::uint64_t now = Common::nowSteadyNs()) noexcept { end_.store(now, std::memory_order_release); }
     bool admitting(std::uint64_t now) const noexcept;
     bool collecting(std::uint64_t now) const noexcept;

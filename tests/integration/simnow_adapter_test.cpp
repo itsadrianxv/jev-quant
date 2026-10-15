@@ -463,7 +463,7 @@ class SimNowAdapter : public ::testing::Test {
 TEST_F(SimNowAdapter, PreservesCallbackSourceAcrossMarketWorkerPublication) {
     Measurement measurement(8, 60000000000ULL, 60000000000ULL, false);
     measurement_ = &measurement;
-    measurement.arm();
+    measurement.startCapture();
     startAdapter();
     ASSERT_GT(updates_.size(), 0U);
     const auto trace = updates_.getNextToRead()->trace_;
@@ -480,7 +480,7 @@ TEST_F(SimNowAdapter, PreservesCallbackSourceAcrossMarketWorkerPublication) {
 TEST_F(SimNowAdapter, CapturesSuccessfulSubmissionAfterGatewayAndAdapterBoundaries) {
     Measurement measurement(8, 60000000000ULL, 60000000000ULL, false);
     measurement_ = &measurement;
-    measurement.arm();
+    measurement.startCapture();
     startAdapter();
     request_trace_ = measurement.source(Common::nowSteadyNs());
     request_trace_.evaluation_id = 7;
@@ -499,7 +499,7 @@ TEST_F(SimNowAdapter, CapturesSuccessfulSubmissionAfterGatewayAndAdapterBoundari
 TEST_F(SimNowAdapter, ImmediateCtpFailureDoesNotBecomeAPerformanceSample) {
     Measurement measurement(8, 60000000000ULL, 60000000000ULL, false);
     measurement_ = &measurement;
-    measurement.arm();
+    measurement.startCapture();
     arrange([](Fake& fake) { fake.reject_insert = true; });
     startAdapter();
     request_trace_ = measurement.source(Common::nowSteadyNs());
